@@ -131,15 +131,20 @@ impl Project {
             outputs: Vec::new(),
             next_id: 1,
         };
-        let id = OutputId(p.alloc_id());
-        p.outputs.push(Output {
-            id,
-            name: "Projektor 1".into(),
+        let out = p.make_output();
+        p.outputs.push(out);
+        p
+    }
+
+    /// Skapar en ny utgång (läggs inte till – använd `Command::AddOutput`).
+    pub fn make_output(&mut self) -> Output {
+        Output {
+            id: OutputId(self.alloc_id()),
+            name: format!("Projektor {}", self.outputs.len() + 1),
             resolution: [1920, 1080],
             window_pos: None,
             fullscreen: false,
-        });
-        p
+        }
     }
 
     pub fn alloc_id(&mut self) -> u32 {
@@ -187,12 +192,11 @@ impl Project {
 
     /// Skapar en ny fyrhörnsyta centrerad på utgången, lite förskjuten för
     /// varje ny yta så att de inte hamnar exakt ovanpå varandra.
-    pub fn make_quad(&mut self, source: Option<SourceId>) -> Surface {
+    pub fn make_quad(&mut self, source: Option<SourceId>, output: OutputId) -> Surface {
         let id = SurfaceId(self.alloc_id());
-        let n = self.surfaces.len() as f32;
+        let n = self.surfaces.iter().filter(|s| s.output == output).count() as f32;
         let off = (n * 0.04) % 0.3;
         let (x0, y0, x1, y1) = (0.25 + off, 0.25 + off, 0.75 + off, 0.75 + off);
-        let output = self.outputs.first().map(|o| o.id).unwrap_or(OutputId(0));
         Surface {
             id,
             name: format!("Yta {}", self.surfaces.len() + 1),
@@ -229,6 +233,19 @@ impl Project {
             .max()
             .unwrap_or(0);
         self.next_id = self.next_id.max(max + 1);
+
+        // Det finns alltid minst en utgång, och varje yta ligger på en utgång som finns.
+        if self.outputs.is_empty() {
+            let out = self.make_output();
+            self.outputs.push(out);
+        }
+        let first = self.outputs[0].id;
+        let outputs: Vec<OutputId> = self.outputs.iter().map(|o| o.id).collect();
+        for s in &mut self.surfaces {
+            if !outputs.contains(&s.output) {
+                s.output = first;
+            }
+        }
     }
 
     /// Gör mediesökvägar relativa till `base` (projektfilens mapp) inför sparning.
@@ -271,7 +288,7 @@ mod tests {
         );
         let sid = src.id;
         p.sources.push(src);
-        let s = p.make_quad(Some(sid));
+        let s = p.make_quad(Some(sid), p.outputs[0].id);
         p.surfaces.push(s);
         let text = p.to_ron().unwrap();
         let back = Project::from_ron(&text).unwrap();
@@ -281,7 +298,7 @@ mod tests {
     #[test]
     fn ids_continue_after_load() {
         let mut p = Project::new();
-        let s = p.make_quad(None);
+        let s = p.make_quad(None, p.outputs[0].id);
         p.surfaces.push(s);
         let mut back = Project::from_ron(&p.to_ron().unwrap()).unwrap();
         let new_id = back.alloc_id();

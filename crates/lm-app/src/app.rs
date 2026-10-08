@@ -3,8 +3,9 @@
 use crate::canvas::{Drag, PtKind};
 use crate::pool::MediaPool;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, ViewportCommand, ViewportId};
-use lm_core::{Command, History, Project, SourceKind, SurfaceId};
+use lm_core::{Command, History, OutputId, Project, SourceKind, SurfaceId};
 use lm_render::RenderOptions;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -41,8 +42,12 @@ pub struct LumaApp {
 
     /// Visa-läge: inga handtag på projektorn.
     pub show_mode: bool,
-    pub output_open: bool,
-    output_spawn: Option<([f32; 2], bool)>,
+    /// Utgången som visas i editorns förhandsvisning och får nya ytor.
+    pub current_output: OutputId,
+    /// Projektorfönster som användaren har stängt.
+    pub closed_outputs: HashSet<OutputId>,
+    /// Position och helskärm som varje projektorfönster öppnades med.
+    output_spawn: HashMap<OutputId, ([f32; 2], bool)>,
 
     pub status: Option<(String, Instant)>,
     pub pending: Option<Pending>,
@@ -59,8 +64,10 @@ impl LumaApp {
         let renderer = lm_render::Renderer::new(&rs.device, &rs.queue, &mut rs.renderer.write());
         cc.egui_ctx.set_theme(egui::Theme::Dark);
 
+        let project = Project::new();
         let mut app = LumaApp {
-            project: Project::new(),
+            current_output: project.outputs[0].id,
+            project,
             history: History::default(),
             path: None,
             saved_revision: 0,
@@ -74,8 +81,8 @@ impl LumaApp {
             next_gesture: 0,
             field_gesture: None,
             show_mode: false,
-            output_open: true,
-            output_spawn: None,
+            closed_outputs: HashSet::new(),
+            output_spawn: HashMap::new(),
             status: None,
             pending: None,
             allow_close: false,
@@ -96,7 +103,7 @@ impl LumaApp {
         }
         if startup.play {
             app.show_mode = true;
-            if let Some(o) = app.project.outputs.first_mut() {
+            for o in &mut app.project.outputs {
                 o.fullscreen = true;
             }
         }
@@ -133,8 +140,11 @@ impl LumaApp {
             self.selected_point = None;
         }
         self.selected = id;
-        if let Some(src) = id.and_then(|id| self.project.surface(id)).and_then(|s| s.source) {
-            self.selected_source = Some(src);
+        if let Some(s) = id.and_then(|id| self.project.surface(id)) {
+            self.current_output = s.output;
+            if let Some(src) = s.source {
+                self.selected_source = Some(src);
+            }
         }
     }
 
@@ -147,7 +157,7 @@ impl LumaApp {
     }
 
     pub fn add_surface(&mut self, source: Option<lm_core::SourceId>) -> SurfaceId {
-        let s = self.project.make_quad(source);
+        let s = self.project.make_quad(source, self.current_output);
         let id = s.id;
         let index = self.project.surfaces.len();
         self.exec(Command::AddSurface { surface: s, index }, None);
@@ -202,6 +212,37 @@ impl LumaApp {
         }
     }
 
+    pub fn select_output(&mut self, id: OutputId) {
+        if self.current_output != id {
+            self.current_output = id;
+            if self.selected.and_then(|s| self.project.surface(s)).is_some_and(|s| s.output != id) {
+                self.select(None);
+            }
+        }
+    }
+
+    pub fn add_output(&mut self) {
+        let mut out = self.project.make_output();
+        // Nytt fönster bredvid de andra så att de inte hamnar ovanpå varandra.
+        let n = self.project.outputs.len() as f32;
+        out.window_pos = Some([80.0 + 60.0 * n, 80.0 + 60.0 * n]);
+        let id = out.id;
+        let index = self.project.outputs.len();
+        self.exec(Command::AddOutput { output: out, index }, None);
+        self.select_output(id);
+    }
+
+    /// Tar bort utgången och dess ytor. Den sista utgången går inte att ta bort.
+    pub fn remove_output(&mut self, id: OutputId) {
+        if self.project.outputs.len() <= 1 {
+            return;
+        }
+        self.exec(Command::RemoveOutput(id), None);
+        if self.current_output == id {
+            self.select_output(self.project.outputs[0].id);
+        }
+    }
+
     // ---------- Filer ----------
 
     pub fn request(&mut self, action: Pending) {
@@ -237,6 +278,9 @@ impl LumaApp {
     }
 
     fn replace_project(&mut self, project: Project, path: Option<PathBuf>) {
+        self.current_output = project.outputs[0].id;
+        self.closed_outputs.clear();
+        self.output_spawn.clear();
         self.project = project;
         self.history.clear();
         self.saved_revision = self.history.revision();
@@ -259,10 +303,8 @@ impl LumaApp {
                     p.absolutize_paths(dir);
                 }
                 let is_autosave = path == autosave_path();
+                // Projektorfönstren öppnas igen där de låg när projektet sparades.
                 self.replace_project(p, (!is_autosave).then(|| path.to_path_buf()));
-                // Öppna projektorfönstret igen där det låg när projektet sparades.
-                self.output_spawn = None;
-                self.output_open = true;
                 if is_autosave {
                     // Återställt projekt räknas som osparat.
                     self.saved_revision = u64::MAX;
@@ -422,14 +464,14 @@ impl LumaApp {
         }
         let res = self.project.output(s.output).map(|o| o.resolution).unwrap_or([1920, 1080]);
         let d = [dir[0] * px / res[0] as f32, dir[1] * px / res[1] as f32];
-        let mut pts = s.dst_pts.clone();
+        let (mut pts, out) = (s.dst_pts.clone(), s.output);
         for (i, p) in pts.iter_mut().enumerate() {
             if self.selected_point.is_none_or(|sp| sp == i) {
                 p[0] += d[0];
                 p[1] += d[1];
             }
         }
-        self.set_points(id, PtKind::Dst, pts, None);
+        self.set_points(id, PtKind::Dst(out), pts, None);
     }
 
     pub fn toggle_play_all(&mut self) {
@@ -440,28 +482,38 @@ impl LumaApp {
 
     // ---------- Projektorfönster ----------
 
-    fn output_window(&mut self, ctx: &egui::Context) {
-        let Some(out) = self.project.outputs.first().cloned() else { return };
-        if !self.output_open {
-            return;
+    fn output_windows(&mut self, ctx: &egui::Context) {
+        let ids: Vec<OutputId> = self.project.outputs.iter().map(|o| o.id).collect();
+        self.output_spawn.retain(|id, _| ids.contains(id));
+        for (n, id) in ids.into_iter().enumerate() {
+            if !self.closed_outputs.contains(&id) {
+                self.output_window(ctx, id, n);
+            }
         }
-        let (pos, fullscreen) = *self.output_spawn.get_or_insert((out.window_pos.unwrap_or([80.0, 80.0]), out.fullscreen));
+    }
+
+    fn output_window(&mut self, ctx: &egui::Context, id: OutputId, n: usize) {
+        let Some(out) = self.project.output(id).cloned() else { return };
+        let default_pos = [80.0 + 60.0 * n as f32, 80.0 + 60.0 * n as f32];
+        let (pos, fullscreen) = *self
+            .output_spawn
+            .entry(id)
+            .or_insert((out.window_pos.unwrap_or(default_pos), out.fullscreen));
         let builder = egui::ViewportBuilder::default()
             .with_title(format!("LumaMap – {}", out.name))
             .with_inner_size([960.0, 540.0])
             .with_position(pos)
             .with_fullscreen(fullscreen);
-        let vid = ViewportId::from_hash_of(("output", out.id));
+        let vid = output_viewport(id);
 
         ctx.show_viewport_immediate(vid, builder, |ui, _class| {
             let (close, info, ppp) = ui.input(|i| (i.viewport().close_requested(), i.viewport().clone(), i.pixels_per_point));
             if close {
-                self.output_open = false;
-                self.output_spawn = None;
+                self.close_output(id);
                 return;
             }
             // Kom ihåg var fönstret ligger och anpassa upplösningen till fönstret.
-            if let Some(o) = self.project.outputs.first_mut() {
+            if let Some(o) = self.project.outputs.iter_mut().find(|o| o.id == id) {
                 if let Some(r) = info.outer_rect {
                     o.window_pos = Some([r.min.x, r.min.y]);
                 }
@@ -474,6 +526,9 @@ impl LumaApp {
                         o.resolution = res;
                     }
                 }
+            }
+            if info.focused == Some(true) && ui.input(|i| i.pointer.any_pressed()) {
+                self.select_output(id);
             }
 
             let (toggle_fs, esc, dbl) = ui.input(|i| {
@@ -495,7 +550,7 @@ impl LumaApp {
                 .frame(egui::Frame::NONE.fill(egui::Color32::BLACK))
                 .show(ui, |ui| {
                     let rect = ui.max_rect();
-                    if let Some(tex) = self.renderer.output_texture(out.id) {
+                    if let Some(tex) = self.renderer.output_texture(id) {
                         ui.painter().image(
                             tex,
                             rect,
@@ -503,12 +558,27 @@ impl LumaApp {
                             egui::Color32::WHITE,
                         );
                     }
+                    // Testbilden visar utgångens namn så att man ser vilken projektor som är vilken.
+                    if self.opts.output_test && !self.opts.blackout {
+                        let galley = ui.painter().layout_no_wrap(
+                            out.name.clone(),
+                            egui::FontId::proportional(rect.height() / 9.0),
+                            egui::Color32::WHITE,
+                        );
+                        let at = rect.center() - galley.size() / 2.0 + egui::vec2(0.0, rect.height() / 4.0);
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(at, galley.size()).expand(rect.height() / 60.0),
+                            8.0,
+                            egui::Color32::from_black_alpha(200),
+                        );
+                        ui.painter().galley(at, galley, egui::Color32::WHITE);
+                    }
                     if self.show_mode {
                         if ui.rect_contains_pointer(rect) {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                         }
                     } else {
-                        self.canvas(ui, rect, PtKind::Dst, "output");
+                        self.canvas(ui, rect, PtKind::Dst(id), "output");
                         if !is_fs {
                             ui.painter().text(
                                 rect.left_bottom() + egui::vec2(10.0, -10.0),
@@ -523,15 +593,22 @@ impl LumaApp {
         });
     }
 
-    pub fn open_output(&mut self) {
-        self.output_open = true;
-        self.output_spawn = None;
+    pub fn output_is_open(&self, id: OutputId) -> bool {
+        !self.closed_outputs.contains(&id)
     }
 
-    pub fn set_output_fullscreen(&mut self, ctx: &egui::Context, on: bool) {
-        if let Some(out) = self.project.outputs.first() {
-            ctx.send_viewport_cmd_to(ViewportId::from_hash_of(("output", out.id)), ViewportCommand::Fullscreen(on));
-        }
+    pub fn open_output(&mut self, id: OutputId) {
+        self.closed_outputs.remove(&id);
+        self.output_spawn.remove(&id);
+    }
+
+    fn close_output(&mut self, id: OutputId) {
+        self.closed_outputs.insert(id);
+        self.output_spawn.remove(&id);
+    }
+
+    pub fn set_output_fullscreen(&mut self, ctx: &egui::Context, id: OutputId, on: bool) {
+        ctx.send_viewport_cmd_to(output_viewport(id), ViewportCommand::Fullscreen(on));
     }
 
     // ---------- Dialoger ----------
@@ -584,6 +661,11 @@ impl eframe::App for LumaApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Vald utgång kan ha försvunnit (t.ex. ångrad "Ny utgång").
+        if self.project.output(self.current_output).is_none() {
+            self.current_output = self.project.outputs[0].id;
+        }
+
         // 1. Media → GPU, och rendera alla utgångar.
         if let Some(rs) = frame.wgpu_render_state() {
             let mut egui_renderer = rs.renderer.write();
@@ -612,7 +694,7 @@ impl eframe::App for LumaApp {
 
         self.shortcuts(ui);
         self.editor_ui(ui);
-        self.output_window(&ctx);
+        self.output_windows(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 
@@ -632,9 +714,14 @@ impl LumaApp {
             .surfaces
             .iter()
             .rev()
+            .filter(|s| s.output == self.current_output)
             .find(|s| lm_geom::point_in_polygon(p, &s.dst_pts))
             .map(|s| s.id)
     }
+}
+
+fn output_viewport(id: OutputId) -> ViewportId {
+    ViewportId::from_hash_of(("output", id))
 }
 
 pub fn autosave_path() -> PathBuf {

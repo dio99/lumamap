@@ -13,6 +13,9 @@ pub enum Command {
     /// Ersätter en yta helt (punkter, egenskaper). Används för alla redigeringar.
     ReplaceSurface(Surface),
     MoveSurfaceTo { id: SurfaceId, index: usize },
+    AddOutput { output: Output, index: usize },
+    /// Tar bort utgången och alla ytor på den.
+    RemoveOutput(OutputId),
     ReplaceOutput(Output),
     /// Flera kommandon som ett ångra-steg.
     Batch(Vec<Command>),
@@ -66,6 +69,28 @@ impl Command {
                 let index = index.min(p.surfaces.len());
                 p.surfaces.insert(index, s);
                 Some(Command::MoveSurfaceTo { id, index: from })
+            }
+            Command::AddOutput { output, index } => {
+                let id = output.id;
+                let index = index.min(p.outputs.len());
+                p.outputs.insert(index, output);
+                Some(Command::RemoveOutput(id))
+            }
+            Command::RemoveOutput(id) => {
+                let index = p.outputs.iter().position(|o| o.id == id)?;
+                let output = p.outputs.remove(index);
+                let mut undo = vec![Command::AddOutput { output, index }];
+                // Ytorna läggs tillbaka i stigande ordning så att lagerordningen bevaras.
+                let mut i = 0;
+                while i < p.surfaces.len() {
+                    if p.surfaces[i].output == id {
+                        let surface = p.surfaces.remove(i);
+                        undo.push(Command::AddSurface { surface, index: i + undo.len() - 1 });
+                    } else {
+                        i += 1;
+                    }
+                }
+                Some(batch(undo))
             }
             Command::ReplaceOutput(new) => {
                 let slot = p.outputs.iter_mut().find(|o| o.id == new.id)?;
@@ -172,7 +197,7 @@ mod tests {
     fn gesture_merges_into_one_undo_step() {
         let mut p = Project::new();
         let mut h = History::default();
-        let s = p.make_quad(None);
+        let s = p.make_quad(None, p.outputs[0].id);
         h.exec(&mut p, Command::AddSurface { surface: s.clone(), index: 0 }, None);
         let original = p.surfaces[0].clone();
         for i in 1..=10 {
@@ -196,7 +221,7 @@ mod tests {
         let src = p.make_source("c", SourceKind::Color { rgba: [1.0; 4] });
         let sid = src.id;
         h.exec(&mut p, Command::AddSource { source: src, index: 0 }, None);
-        let s = p.make_quad(Some(sid));
+        let s = p.make_quad(Some(sid), p.outputs[0].id);
         h.exec(&mut p, Command::AddSurface { surface: s, index: 0 }, None);
         h.exec(&mut p, Command::RemoveSource(sid), None);
         assert!(p.sources.is_empty());
@@ -207,11 +232,33 @@ mod tests {
     }
 
     #[test]
+    fn remove_output_restores_surfaces_in_order() {
+        let mut p = Project::new();
+        let mut h = History::default();
+        let o2 = p.make_output();
+        let o2_id = o2.id;
+        h.exec(&mut p, Command::AddOutput { output: o2, index: 1 }, None);
+        let o1_id = p.outputs[0].id;
+        for out in [o1_id, o2_id, o2_id, o1_id, o2_id] {
+            let s = p.make_quad(None, out);
+            let n = p.surfaces.len();
+            h.exec(&mut p, Command::AddSurface { surface: s, index: n }, None);
+        }
+        let before = p.clone();
+        h.exec(&mut p, Command::RemoveOutput(o2_id), None);
+        assert_eq!(p.outputs.len(), 1);
+        assert_eq!(p.surfaces.len(), 2);
+        assert!(p.surfaces.iter().all(|s| s.output == o1_id));
+        h.undo(&mut p);
+        assert_eq!(p, before);
+    }
+
+    #[test]
     fn reorder_undo() {
         let mut p = Project::new();
         let mut h = History::default();
         for _ in 0..3 {
-            let s = p.make_quad(None);
+            let s = p.make_quad(None, p.outputs[0].id);
             let n = p.surfaces.len();
             h.exec(&mut p, Command::AddSurface { surface: s, index: n }, None);
         }

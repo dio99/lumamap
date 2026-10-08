@@ -3,13 +3,13 @@
 
 use crate::app::LumaApp;
 use eframe::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Stroke, Ui};
-use lm_core::{Command, Pt, SurfaceId};
+use lm_core::{Command, OutputId, Pt, SurfaceId};
 
 /// Vilka punkter vyn redigerar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PtKind {
-    /// Var ytan hamnar på utgången.
-    Dst,
+    /// Var ytan hamnar på utgången. Vyn visar bara ytorna på den utgången.
+    Dst(OutputId),
     /// Vilket utsnitt av källan som visas.
     Src,
 }
@@ -44,7 +44,7 @@ pub fn fit(avail: Rect, aspect: f32) -> Rect {
 impl LumaApp {
     fn canvas_surfaces(&self, kind: PtKind) -> Vec<SurfaceId> {
         match kind {
-            PtKind::Dst => self.project.surfaces.iter().map(|s| s.id).collect(),
+            PtKind::Dst(out) => self.project.surfaces.iter().filter(|s| s.output == out).map(|s| s.id).collect(),
             PtKind::Src => self.selected.into_iter().collect(),
         }
     }
@@ -52,7 +52,7 @@ impl LumaApp {
     fn points(&self, id: SurfaceId, kind: PtKind) -> Option<&[Pt]> {
         let s = self.project.surface(id)?;
         Some(match kind {
-            PtKind::Dst => &s.dst_pts,
+            PtKind::Dst(_) => &s.dst_pts,
             PtKind::Src => &s.src_pts,
         })
     }
@@ -113,7 +113,7 @@ impl LumaApp {
                             });
                         }
                     }
-                    None if kind == PtKind::Dst => self.select(None),
+                    None if matches!(kind, PtKind::Dst(_)) => self.select(None),
                     None => {}
                 }
             }
@@ -151,7 +151,7 @@ impl LumaApp {
                     self.select(Some(id));
                     self.selected_point = point;
                 }
-                None if kind == PtKind::Dst => self.select(None),
+                None if matches!(kind, PtKind::Dst(_)) => self.select(None),
                 None => {}
             }
         }
@@ -189,7 +189,7 @@ impl LumaApp {
             }
             painter.add(egui::Shape::closed_line(pts.clone(), Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
 
-            if kind == PtKind::Dst {
+            if matches!(kind, PtKind::Dst(_)) {
                 let c = lm_geom::centroid(self.points(id, kind).unwrap_or_default());
                 let label = if s.source.is_none() { format!("{}\n(ingen media)", s.name) } else { s.name.clone() };
                 painter.text(
@@ -217,7 +217,7 @@ impl LumaApp {
     pub fn set_points(&mut self, id: SurfaceId, kind: PtKind, pts: Vec<Pt>, gesture: Option<u64>) {
         let Some(mut s) = self.project.surface(id).cloned() else { return };
         match kind {
-            PtKind::Dst => s.dst_pts = pts,
+            PtKind::Dst(_) => s.dst_pts = pts,
             PtKind::Src => s.src_pts = pts,
         }
         self.exec(Command::ReplaceSurface(s), gesture);
