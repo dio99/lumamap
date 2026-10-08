@@ -4,7 +4,7 @@
 use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
-use lm_core::{Command, SourceKind, UNIT_QUAD};
+use lm_core::{Command, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
 use std::time::Duration;
 
 const FILES: &[&str] = &[
@@ -312,6 +312,29 @@ impl LumaApp {
                 ui.end_row();
             }
 
+            ui.label("Form");
+            ui.horizontal(|ui| {
+                let mut shape = s.shape;
+                let is_mesh = matches!(shape, Shape::Mesh { .. });
+                if ui.selectable_label(!is_mesh, "Fyrhörn").on_hover_text("Fyra hörn, perspektivriktig").clicked() {
+                    shape = Shape::Quad;
+                }
+                if ui.selectable_label(is_mesh, "Mesh").on_hover_text("Rutnät av punkter för böjda ytor, t.ex. pelare").clicked() && !is_mesh {
+                    shape = Shape::Mesh { cols: 4, rows: 4 };
+                }
+                if let Shape::Mesh { cols, rows } = &mut shape {
+                    ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(" kol"))
+                        .on_hover_text("Antal punkter på bredden");
+                    ui.add(egui::DragValue::new(rows).range(MESH_MIN..=MESH_MAX).suffix(" rad"))
+                        .on_hover_text("Antal punkter på höjden");
+                }
+                if shape != s.shape {
+                    reshape(&mut s, shape);
+                    self.selected_point = None;
+                }
+            });
+            ui.end_row();
+
             ui.label("Opacitet");
             let r = ui.add(egui::Slider::new(&mut s.opacity, 0.0..=1.0).show_value(true));
             if r.changed() {
@@ -342,16 +365,17 @@ impl LumaApp {
                 let ys = s.dst_pts.iter().map(|p| p[1]);
                 let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
                 let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
-                s.dst_pts = vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+                s.dst_pts = shape_points(s.shape, &[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
             }
             if ui.button("⛶ Fyll").on_hover_text("Fyll hela projektorbilden").clicked() {
-                s.dst_pts = UNIT_QUAD.to_vec();
+                s.dst_pts = shape_points(s.shape, &UNIT_QUAD);
             }
         });
         ui.horizontal(|ui| {
             if ui.button("🗐 Duplicera").clicked() {
                 let mut copy = self.project.make_quad(s.source, s.output);
                 copy.name = format!("{} kopia", s.name);
+                copy.shape = s.shape;
                 copy.src_pts = s.src_pts.clone();
                 copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
                 copy.opacity = s.opacity;
@@ -529,5 +553,63 @@ impl LumaApp {
             );
         }
         self.canvas(ui, rect, PtKind::Dst(out.id), "editor");
+    }
+}
+
+/// Punkter för `shape` som täcker fyrhörningen `quad`.
+fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
+    match shape {
+        Shape::Quad => quad.to_vec(),
+        Shape::Mesh { cols, rows } => lm_geom::mesh_from_quad(quad, cols as usize, rows as usize),
+    }
+}
+
+/// Byter form (eller meshupplösning) utan att ytan hoppar: den nya formen
+/// samplas från den gamla.
+fn reshape(s: &mut Surface, to: Shape) {
+    s.dst_pts = match (s.shape, to) {
+        (Shape::Quad, Shape::Quad) => return,
+        (Shape::Quad, _) => match lm_geom::quad(&s.dst_pts) {
+            Some(q) => shape_points(to, &q),
+            None => return,
+        },
+        (Shape::Mesh { cols, rows }, Shape::Quad) => {
+            let (c, r) = (cols as usize, rows as usize);
+            vec![s.dst_pts[0], s.dst_pts[c - 1], s.dst_pts[c * r - 1], s.dst_pts[c * (r - 1)]]
+        }
+        (Shape::Mesh { cols, rows }, Shape::Mesh { cols: nc, rows: nr }) => {
+            lm_geom::mesh_grid(&s.dst_pts, cols as usize, rows as usize, nc as usize, nr as usize)
+        }
+    };
+    s.shape = to;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn surface(dst: Vec<Pt>) -> Surface {
+        let mut p = lm_core::Project::new();
+        let mut s = p.make_quad(None, p.outputs[0].id);
+        s.dst_pts = dst;
+        s
+    }
+
+    fn close(a: Pt, b: Pt) -> bool {
+        (a[0] - b[0]).abs() < 1e-4 && (a[1] - b[1]).abs() < 1e-4
+    }
+
+    #[test]
+    fn quad_to_mesh_and_back_keeps_corners() {
+        let corners = vec![[0.1, 0.2], [0.8, 0.1], [0.9, 0.9], [0.2, 0.7]];
+        let mut s = surface(corners.clone());
+        reshape(&mut s, Shape::Mesh { cols: 4, rows: 3 });
+        assert_eq!(s.dst_pts.len(), 12);
+        reshape(&mut s, Shape::Mesh { cols: 6, rows: 6 });
+        assert_eq!(s.dst_pts.len(), 36);
+        reshape(&mut s, Shape::Quad);
+        for (a, b) in s.dst_pts.iter().zip(&corners) {
+            assert!(close(*a, *b), "{a:?} != {b:?}");
+        }
     }
 }

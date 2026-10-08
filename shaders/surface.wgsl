@@ -1,11 +1,13 @@
-// En mappad yta. Fyra hörn på utgången (dst) ritas som två trianglar.
-// Texturkoordinaten räknas fram per pixel med homografin `h` (utgång → källa),
-// vilket ger korrekt perspektiv utan synlig diagonal söm.
+// En mappad yta, ritad som trianglar från en vertexbuffer.
+//
+// Varje vertex har sin position på utgången (`pos`) och en punkt `p` som
+// homografin `h` avbildar på källan. Texturkoordinaten räknas fram per pixel,
+// vilket ger korrekt perspektiv utan synlig diagonal söm:
+//   Fyrhörn: p = pos, h = utgång → källa.
+//   Mesh:    p = (u, v) i meshen, h = enhetskvadrat → källans utsnitt.
 
 struct SurfaceUniform {
     h: mat3x3<f32>,
-    dst01: vec4<f32>,
-    dst23: vec4<f32>,
     // x = opacitet
     params: vec4<f32>,
 };
@@ -20,12 +22,9 @@ struct VsOut {
 };
 
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
-    var corners = array<u32, 6>(0u, 1u, 2u, 0u, 2u, 3u);
-    var dst = array<vec2<f32>, 4>(u.dst01.xy, u.dst01.zw, u.dst23.xy, u.dst23.zw);
-    let p = dst[corners[vi]];
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) p: vec2<f32>) -> VsOut {
     var out: VsOut;
-    out.clip = vec4<f32>(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+    out.clip = vec4<f32>(pos.x * 2.0 - 1.0, 1.0 - pos.y * 2.0, 0.0, 1.0);
     out.p = p;
     return out;
 }

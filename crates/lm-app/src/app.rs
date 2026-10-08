@@ -446,8 +446,8 @@ impl LumaApp {
         }
         if next_pt {
             // C = välj nästa hörn på markerad yta.
-            if self.selected.is_some() {
-                self.selected_point = Some(self.selected_point.map_or(0, |p| (p + 1) % 4));
+            if let Some(n) = self.selected.and_then(|id| self.project.surface(id)).map(|s| s.dst_pts.len()) {
+                self.selected_point = Some(self.selected_point.map_or(0, |p| (p + 1) % n));
             }
         }
         if arrows != [0.0, 0.0] {

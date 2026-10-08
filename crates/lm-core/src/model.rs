@@ -74,8 +74,24 @@ impl SourceKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Shape {
+    /// Fyra hörn, perspektivriktig (homografi).
     #[default]
     Quad,
+    /// Rutnät med `cols × rows` kontrollpunkter (radvis) för böjda ytor.
+    Mesh { cols: u32, rows: u32 },
+}
+
+pub const MESH_MIN: u32 = 2;
+pub const MESH_MAX: u32 = 16;
+
+impl Shape {
+    /// Antal punkter i `dst_pts` för formen.
+    pub fn point_count(&self) -> usize {
+        match *self {
+            Shape::Quad => 4,
+            Shape::Mesh { cols, rows } => (cols * rows) as usize,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,7 +104,8 @@ pub struct Surface {
     pub shape: Shape,
     /// Utsnitt ur källan (ordning: övre vänster, övre höger, nedre höger, nedre vänster).
     pub src_pts: Vec<Pt>,
-    /// Placering på utgången (samma ordning som `src_pts`).
+    /// Placering på utgången. Fyrhörn: samma ordning som `src_pts`.
+    /// Mesh: `cols × rows` punkter radvis från övre vänster.
     pub dst_pts: Vec<Pt>,
     #[serde(default = "one")]
     pub opacity: f32,
@@ -245,6 +262,15 @@ impl Project {
             if !outputs.contains(&s.output) {
                 s.output = first;
             }
+            // Trasig geometri (t.ex. handredigerad fil) blir en rak fyrhörning i stället för en krasch.
+            let bad_mesh = matches!(s.shape, Shape::Mesh { cols, rows } if !(MESH_MIN..=MESH_MAX).contains(&cols) || !(MESH_MIN..=MESH_MAX).contains(&rows));
+            if bad_mesh || s.dst_pts.len() != s.shape.point_count() {
+                s.shape = Shape::Quad;
+                s.dst_pts = vec![[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]];
+            }
+            if s.src_pts.len() != 4 {
+                s.src_pts = UNIT_QUAD.to_vec();
+            }
         }
     }
 
@@ -310,6 +336,17 @@ mod tests {
         let p = Project::from_ron(include_str!("../../../examples/demo.lmap")).unwrap();
         assert_eq!(p.surfaces.len(), 1);
         assert_eq!(p.surfaces[0].source, Some(p.sources[0].id));
+    }
+
+    #[test]
+    fn broken_mesh_is_repaired() {
+        let mut p = Project::new();
+        let mut s = p.make_quad(None, p.outputs[0].id);
+        s.shape = Shape::Mesh { cols: 3, rows: 3 };
+        p.surfaces.push(s);
+        let back = Project::from_ron(&p.to_ron().unwrap()).unwrap();
+        assert_eq!(back.surfaces[0].shape, Shape::Quad);
+        assert_eq!(back.surfaces[0].dst_pts.len(), 4);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use crate::app::LumaApp;
 use eframe::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Stroke, Ui};
-use lm_core::{Command, OutputId, Pt, SurfaceId};
+use lm_core::{Command, OutputId, Pt, Shape, SurfaceId};
 
 /// Vilka punkter vyn redigerar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -26,6 +26,8 @@ pub struct Drag {
 
 pub const ACCENT: Color32 = Color32::from_rgb(0, 190, 255);
 const HANDLE_HIT: f32 = 14.0;
+/// Antal linjesegment mellan två kontrollpunkter när meshkurvor ritas.
+const CURVE_STEPS: usize = 8;
 
 pub fn to_screen(r: Rect, p: Pt) -> Pos2 {
     egui::pos2(r.min.x + p[0] * r.width(), r.min.y + p[1] * r.height())
@@ -57,6 +59,23 @@ impl LumaApp {
         })
     }
 
+    /// Meshens storlek om vyn visar ytans mesh, annars `None` (rak polygon).
+    fn mesh_size(&self, id: SurfaceId, kind: PtKind) -> Option<(usize, usize)> {
+        match (kind, self.project.surface(id)?.shape) {
+            (PtKind::Dst(_), Shape::Mesh { cols, rows }) => Some((cols as usize, rows as usize)),
+            _ => None,
+        }
+    }
+
+    /// Ytans kontur (normaliserad). För mesh följer den kurvorna.
+    fn outline(&self, id: SurfaceId, kind: PtKind) -> Vec<Pt> {
+        let pts = self.points(id, kind).unwrap_or_default();
+        match self.mesh_size(id, kind) {
+            Some((c, r)) => lm_geom::mesh_outline(pts, c, r, CURVE_STEPS),
+            None => pts.to_vec(),
+        }
+    }
+
     /// Hittar hörn (helst på markerad yta) eller annars översta yta under `pos`.
     fn hit(&self, rect: Rect, kind: PtKind, pos: Pos2) -> Option<(SurfaceId, Option<usize>)> {
         let ids = self.canvas_surfaces(kind);
@@ -80,7 +99,8 @@ impl LumaApp {
             }
         }
         for id in ids.iter().rev() {
-            if lm_geom::point_in_polygon(p, &screen(*id)) {
+            let outline: Vec<Pt> = self.outline(*id, kind).iter().map(|q| to_screen(rect, *q)).map(|q| [q.x, q.y]).collect();
+            if lm_geom::point_in_polygon(p, &outline) {
                 return Some((*id, None));
             }
         }
@@ -172,6 +192,8 @@ impl LumaApp {
         for id in self.canvas_surfaces(kind) {
             let Some(s) = self.project.surface(id) else { continue };
             let pts: Vec<Pos2> = self.points(id, kind).unwrap_or_default().iter().map(|p| to_screen(rect, *p)).collect();
+            let outline: Vec<Pos2> = self.outline(id, kind).iter().map(|p| to_screen(rect, *p)).collect();
+            let mesh = self.mesh_size(id, kind);
             let selected = self.selected == Some(id);
             let color = if !s.visible {
                 Color32::from_gray(90)
@@ -180,14 +202,31 @@ impl LumaApp {
             } else {
                 Color32::from_rgba_unmultiplied(255, 255, 255, 140)
             };
-            if selected {
+            if selected && mesh.is_none() {
                 painter.add(egui::Shape::convex_polygon(
                     pts.clone(),
                     Color32::from_rgba_unmultiplied(0, 190, 255, 18),
                     Stroke::NONE,
                 ));
             }
-            painter.add(egui::Shape::closed_line(pts.clone(), Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
+            // Meshens inre rutnät som tunna kurvor.
+            if let (Some((c, r)), true) = (mesh, selected) {
+                let ctrl = self.points(id, kind).unwrap_or_default();
+                let thin = Stroke::new(1.0, color.gamma_multiply(0.5));
+                let n = (c - 1) * CURVE_STEPS + 1;
+                let along = lm_geom::mesh_grid(ctrl, c, r, n, r);
+                for row in 1..r - 1 {
+                    let line = along[row * n..(row + 1) * n].iter().map(|p| to_screen(rect, *p)).collect();
+                    painter.add(egui::Shape::line(line, thin));
+                }
+                let n = (r - 1) * CURVE_STEPS + 1;
+                let down = lm_geom::mesh_grid(ctrl, c, r, c, n);
+                for col in 1..c - 1 {
+                    let line = (0..n).map(|j| to_screen(rect, down[j * c + col])).collect();
+                    painter.add(egui::Shape::line(line, thin));
+                }
+            }
+            painter.add(egui::Shape::closed_line(outline, Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
 
             if matches!(kind, PtKind::Dst(_)) {
                 let c = lm_geom::centroid(self.points(id, kind).unwrap_or_default());
@@ -204,7 +243,11 @@ impl LumaApp {
             for (i, p) in pts.iter().enumerate() {
                 if selected {
                     let active = self.selected_point == Some(i);
-                    let r = if active { 8.0 } else { 6.0 };
+                    let r = match (active, mesh.is_some()) {
+                        (true, _) => 8.0,
+                        (false, true) => 5.0,
+                        (false, false) => 6.0,
+                    };
                     let fill = if active { Color32::from_rgb(255, 170, 0) } else { Color32::WHITE };
                     painter.circle(*p, r, fill, Stroke::new(2.0, ACCENT));
                 } else {

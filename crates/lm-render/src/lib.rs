@@ -3,24 +3,38 @@
 
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::util::DeviceExt;
-use lm_core::{OutputId, Project, SourceId, SurfaceId, UNIT_QUAD};
+use lm_core::{OutputId, Project, Shape, SourceId, Surface, SurfaceId, UNIT_QUAD};
 use lm_geom::Homography;
 use lm_media::FrameView;
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use egui::TextureId;
 
 pub use egui_wgpu;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-const UNIFORM_SIZE: u64 = 96;
+const UNIFORM_SIZE: u64 = 64;
+/// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
+const MESH_SUBDIV: usize = 12;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct SurfaceUniform {
     h: [[f32; 4]; 3],
-    dst: [[f32; 2]; 4],
     params: [f32; 4],
+}
+
+/// Position på utgången + punkt som homografin avbildar på källan.
+type Vertex = [f32; 4];
+const VERTEX_SIZE: u64 = 16;
+
+/// Ett ritanrop: vilken utgång, vilken textur (`None` = testbild), uniform och hörn.
+struct Draw {
+    output: OutputId,
+    texture: Option<SourceId>,
+    uniform: SurfaceUniform,
+    vertices: Range<u32>,
 }
 
 impl SurfaceUniform {
@@ -30,7 +44,6 @@ impl SurfaceUniform {
             .h
             .iter()
             .flatten()
-            .chain(self.dst.iter().flatten())
             .chain(self.params.iter());
         for f in floats {
             out.extend_from_slice(&f.to_le_bytes());
@@ -73,6 +86,8 @@ pub struct Renderer {
     uniform_bg: wgpu::BindGroup,
     uniform_stride: u64,
     uniform_capacity: u64,
+    vertex_buf: wgpu::Buffer,
+    vertex_capacity: u64,
     sources: HashMap<SourceId, GpuTexture>,
     test: GpuTexture,
     outputs: HashMap<OutputId, GpuOutput>,
@@ -130,7 +145,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[],
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: VERTEX_SIZE,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                })],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -170,6 +189,8 @@ impl Renderer {
         let uniform_stride = (device.limits().min_uniform_buffer_offset_alignment as u64).max(UNIFORM_SIZE);
         let uniform_capacity = 64;
         let (uniform_buf, uniform_bg) = make_uniforms(device, &uni_layout, uniform_stride, uniform_capacity);
+        let vertex_capacity = 4096;
+        let vertex_buf = make_vertices(device, vertex_capacity);
 
         let (tw, th) = (1024, 1024);
         let pattern = lm_media::test_pattern(tw, th);
@@ -194,6 +215,8 @@ impl Renderer {
             uniform_bg,
             uniform_stride,
             uniform_capacity,
+            vertex_buf,
+            vertex_capacity,
             sources: HashMap::new(),
             test,
             outputs: HashMap::new(),
@@ -261,14 +284,16 @@ impl Renderer {
             keep
         });
 
-        // Samla alla ritanrop: (utgång, textur, uniform).
-        let mut draws: Vec<(OutputId, Option<SourceId>, SurfaceUniform)> = Vec::new();
+        // Samla alla ritanrop och deras hörn.
+        let mut draws: Vec<Draw> = Vec::new();
+        let mut vertices: Vec<Vertex> = Vec::new();
         for out in &project.outputs {
             if opts.blackout {
                 continue;
             }
             if opts.output_test {
-                draws.push((out.id, None, uniform(&UNIT_QUAD, &UNIT_QUAD, 1.0).unwrap()));
+                let geo = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0).unwrap();
+                push_draw(&mut draws, &mut vertices, out.id, None, geo);
                 continue;
             }
             for s in project.surfaces.iter().filter(|s| s.output == out.id && s.visible) {
@@ -277,14 +302,19 @@ impl Renderer {
                 if !test && tex.is_none_or(|id| !self.sources.contains_key(&id)) {
                     continue;
                 }
-                let (Some(dst), Some(src)) = (lm_geom::quad(&s.dst_pts), lm_geom::quad(&s.src_pts)) else {
-                    continue;
-                };
-                let src = if test { UNIT_QUAD } else { src };
-                if let Some(u) = uniform(&dst, &src, s.opacity) {
-                    draws.push((out.id, tex, u));
+                if let Some(geo) = surface_geometry(s, test) {
+                    push_draw(&mut draws, &mut vertices, out.id, tex, geo);
                 }
             }
+        }
+
+        if vertices.len() as u64 > self.vertex_capacity {
+            self.vertex_capacity = (vertices.len() as u64).next_power_of_two();
+            self.vertex_buf = make_vertices(device, self.vertex_capacity);
+        }
+        if !vertices.is_empty() {
+            let bytes: Vec<u8> = vertices.iter().flatten().flat_map(|f| f.to_le_bytes()).collect();
+            queue.write_buffer(&self.vertex_buf, 0, &bytes);
         }
 
         if draws.len() as u64 > self.uniform_capacity {
@@ -294,9 +324,9 @@ impl Renderer {
             self.uniform_bg = g;
         }
         let mut data = vec![0u8; (self.uniform_stride * draws.len().max(1) as u64) as usize];
-        for (i, (_, _, u)) in draws.iter().enumerate() {
+        for (i, d) in draws.iter().enumerate() {
             let o = i * self.uniform_stride as usize;
-            data[o..o + UNIFORM_SIZE as usize].copy_from_slice(&u.bytes());
+            data[o..o + UNIFORM_SIZE as usize].copy_from_slice(&d.uniform.bytes());
         }
         queue.write_buffer(&self.uniform_buf, 0, &data);
 
@@ -320,29 +350,98 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.pipeline);
-            for (i, (oid, tex, _)) in draws.iter().enumerate() {
-                if *oid != out.id {
+            pass.set_vertex_buffer(0, self.vertex_buf.slice(..));
+            for (i, d) in draws.iter().enumerate() {
+                if d.output != out.id {
                     continue;
                 }
-                let bg = match tex {
-                    Some(id) => &self.sources[id].bind_group,
+                let bg = match d.texture {
+                    Some(id) => &self.sources[&id].bind_group,
                     None => &self.test.bind_group,
                 };
                 pass.set_bind_group(0, &self.uniform_bg, &[(i as u64 * self.uniform_stride) as u32]);
                 pass.set_bind_group(1, bg, &[]);
-                pass.draw(0..6, 0..1);
+                pass.draw(d.vertices.clone(), 0..1);
             }
         }
         queue.submit([encoder.finish()]);
     }
 }
 
-fn uniform(dst: &[[f32; 2]; 4], src: &[[f32; 2]; 4], opacity: f32) -> Option<SurfaceUniform> {
-    let h = Homography::from_points(dst, src)?;
-    Some(SurfaceUniform {
+fn push_draw(
+    draws: &mut Vec<Draw>,
+    vertices: &mut Vec<Vertex>,
+    output: OutputId,
+    texture: Option<SourceId>,
+    (uniform, verts): (SurfaceUniform, Vec<Vertex>),
+) {
+    let start = vertices.len() as u32;
+    vertices.extend(verts);
+    draws.push(Draw {
+        output,
+        texture,
+        uniform,
+        vertices: start..vertices.len() as u32,
+    });
+}
+
+fn surface_uniform(h: Homography, opacity: f32) -> SurfaceUniform {
+    SurfaceUniform {
         h: h.to_gpu(),
-        dst: *dst,
         params: [opacity.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
+    }
+}
+
+/// Uniform och trianglar för en yta. `test` = visa testbilden över hela ytan.
+fn surface_geometry(s: &Surface, test: bool) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    let src = if test { UNIT_QUAD } else { lm_geom::quad(&s.src_pts)? };
+    match s.shape {
+        Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity),
+        Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity),
+    }
+}
+
+/// Fyrhörn: två trianglar, texturen följer homografin utgång → källa.
+fn quad_geometry(dst: &[[f32; 2]; 4], src: &[[f32; 2]; 4], opacity: f32) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    let h = Homography::from_points(dst, src)?;
+    let v = |i: usize| [dst[i][0], dst[i][1], dst[i][0], dst[i][1]];
+    Some((surface_uniform(h, opacity), [0, 1, 2, 0, 2, 3].map(v).to_vec()))
+}
+
+/// Mesh: tätt rutnät av trianglar längs splineytan, texturen följer (u, v).
+fn mesh_geometry(
+    pts: &[[f32; 2]],
+    cols: usize,
+    rows: usize,
+    src: &[[f32; 2]; 4],
+    opacity: f32,
+) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    if cols < 2 || rows < 2 || pts.len() != cols * rows {
+        return None;
+    }
+    let h = Homography::from_points(&UNIT_QUAD, src)?;
+    let (nu, nv) = ((cols - 1) * MESH_SUBDIV + 1, (rows - 1) * MESH_SUBDIV + 1);
+    let grid = lm_geom::mesh_grid(pts, cols, rows, nu, nv);
+    let vertex = |i: usize, j: usize| {
+        let p = grid[j * nu + i];
+        [p[0], p[1], i as f32 / (nu - 1) as f32, j as f32 / (nv - 1) as f32]
+    };
+    let mut out = Vec::with_capacity((nu - 1) * (nv - 1) * 6);
+    for j in 0..nv - 1 {
+        for i in 0..nu - 1 {
+            let (a, b, c, d) = (vertex(i, j), vertex(i + 1, j), vertex(i + 1, j + 1), vertex(i, j + 1));
+            out.extend([a, b, c, a, c, d]);
+        }
+    }
+    Some((surface_uniform(h, opacity), out))
+}
+
+fn make_vertices(device: &wgpu::Device, capacity: u64) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("surface vertices"),
+        size: capacity * VERTEX_SIZE,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
     })
 }
 
