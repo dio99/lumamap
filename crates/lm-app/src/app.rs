@@ -161,7 +161,12 @@ impl LumaApp {
     }
 
     pub fn add_surface(&mut self, source: Option<lm_core::SourceId>) -> SurfaceId {
-        let s = self.project.make_quad(source, self.current_output);
+        self.add_shaped(source, lm_core::Shape::Quad)
+    }
+
+    pub fn add_shaped(&mut self, source: Option<lm_core::SourceId>, shape: lm_core::Shape) -> SurfaceId {
+        let mut s = self.project.make_quad(source, self.current_output);
+        crate::panels::reshape(&mut s, shape);
         let id = s.id;
         let index = self.project.surfaces.len();
         self.exec(Command::AddSurface { surface: s, index }, None);

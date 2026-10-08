@@ -3,7 +3,7 @@
 
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::util::DeviceExt;
-use lm_core::{Mask, OutputId, Project, Shape, SourceId, Surface, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS, UNIT_QUAD};
+use lm_core::{BlendMode, Mask, OutputId, Project, Shape, SourceId, Surface, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS, UNIT_QUAD};
 use lm_geom::Homography;
 use lm_media::FrameView;
 use std::collections::{HashMap, HashSet};
@@ -14,7 +14,7 @@ pub use egui_wgpu;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-const UNIFORM_SIZE: u64 = 48 + 16 + 16 + 16 * 16;
+const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 * 16;
 /// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
 const MESH_SUBDIV: usize = 12;
 
@@ -22,6 +22,7 @@ const MESH_SUBDIV: usize = 12;
 #[derive(Clone, Copy)]
 struct SurfaceUniform {
     h: [[f32; 4]; 3],
+    h2: [[f32; 4]; 3],
     params: [f32; 4],
     res: [f32; 4],
     mask: [[f32; 4]; 16],
@@ -35,6 +36,7 @@ const VERTEX_SIZE: u64 = 16;
 struct Draw {
     output: OutputId,
     texture: Option<SourceId>,
+    blend: BlendMode,
     uniform: SurfaceUniform,
     vertices: Range<u32>,
 }
@@ -46,6 +48,7 @@ impl SurfaceUniform {
             .h
             .iter()
             .flatten()
+            .chain(self.h2.iter().flatten())
             .chain(self.params.iter())
             .chain(self.res.iter())
             .chain(self.mask.iter().flatten());
@@ -82,7 +85,8 @@ pub struct RenderOptions {
 }
 
 pub struct Renderer {
-    pipeline: wgpu::RenderPipeline,
+    /// En pipeline per blandningsläge, i samma ordning som `BlendMode::ALL`.
+    pipelines: [wgpu::RenderPipeline; 4],
     sampler: wgpu::Sampler,
     tex_layout: wgpu::BindGroupLayout,
     uni_layout: wgpu::BindGroupLayout,
@@ -142,8 +146,8 @@ impl Renderer {
             bind_group_layouts: &[Some(&uni_layout), Some(&tex_layout)],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("surface"),
+        let pipelines = BlendMode::ALL.map(|mode| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(mode.label()),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -167,20 +171,13 @@ impl Renderer {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: FORMAT,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent::OVER,
-                    }),
+                    blend: Some(blend_state(mode)),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
             multiview_mask: None,
             cache: None,
-        });
+        }));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("source"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -211,7 +208,7 @@ impl Renderer {
         );
 
         Renderer {
-            pipeline,
+            pipelines,
             sampler,
             tex_layout,
             uni_layout,
@@ -296,8 +293,8 @@ impl Renderer {
                 continue;
             }
             if opts.output_test {
-                let geo = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0).unwrap();
-                push_draw(&mut draws, &mut vertices, out.id, None, geo);
+                let geo = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0, false).unwrap();
+                push_draw(&mut draws, &mut vertices, out.id, None, BlendMode::Normal, geo);
                 continue;
             }
             for s in project.surfaces.iter().filter(|s| s.output == out.id && s.visible) {
@@ -308,7 +305,7 @@ impl Renderer {
                 }
                 if let Some(mut geo) = surface_geometry(s, test) {
                     apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution);
-                    push_draw(&mut draws, &mut vertices, out.id, tex, geo);
+                    push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }
         }
@@ -354,7 +351,6 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.pipeline);
             pass.set_vertex_buffer(0, self.vertex_buf.slice(..));
             for (i, d) in draws.iter().enumerate() {
                 if d.output != out.id {
@@ -364,12 +360,36 @@ impl Renderer {
                     Some(id) => &self.sources[&id].bind_group,
                     None => &self.test.bind_group,
                 };
+                pass.set_pipeline(&self.pipelines[d.blend as usize]);
                 pass.set_bind_group(0, &self.uniform_bg, &[(i as u64 * self.uniform_stride) as u32]);
                 pass.set_bind_group(1, bg, &[]);
                 pass.draw(d.vertices.clone(), 0..1);
             }
         }
         queue.submit([encoder.finish()]);
+    }
+}
+
+/// Blandning för förmultiplicerad färg (s = källa·alfa, d = det som redan ritats).
+fn blend_state(mode: BlendMode) -> wgpu::BlendState {
+    use wgpu::BlendFactor as F;
+    let (src_factor, dst_factor) = match mode {
+        // s + d·(1 − a)
+        BlendMode::Normal => (F::One, F::OneMinusSrcAlpha),
+        // s + d
+        BlendMode::Add => (F::One, F::One),
+        // d·(s + 1 − a): ytan mörkar ner, genomskinliga delar lämnar d orörd.
+        BlendMode::Multiply => (F::Dst, F::OneMinusSrcAlpha),
+        // d + s·(1 − d)
+        BlendMode::Screen => (F::OneMinusDst, F::One),
+    };
+    wgpu::BlendState {
+        color: wgpu::BlendComponent {
+            src_factor,
+            dst_factor,
+            operation: wgpu::BlendOperation::Add,
+        },
+        alpha: wgpu::BlendComponent::OVER,
     }
 }
 
@@ -384,6 +404,7 @@ fn push_draw(
     vertices: &mut Vec<Vertex>,
     output: OutputId,
     texture: Option<SourceId>,
+    blend: BlendMode,
     (uniform, verts): (SurfaceUniform, Vec<Vertex>),
 ) {
     let start = vertices.len() as u32;
@@ -391,22 +412,26 @@ fn push_draw(
     draws.push(Draw {
         output,
         texture,
+        blend,
         uniform,
         vertices: start..vertices.len() as u32,
     });
 }
 
-fn surface_uniform(h: Homography, opacity: f32) -> SurfaceUniform {
+/// `h2`: vertexpunkt → ytans koordinater, `h`: ytans koordinater → källan.
+fn surface_uniform(h2: Homography, h: Homography, opacity: f32) -> SurfaceUniform {
     SurfaceUniform {
         h: h.to_gpu(),
+        h2: h2.to_gpu(),
         params: [opacity.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
-        res: [1.0; 4],
+        res: [1.0, 1.0, 0.0, 0.0],
         mask: [[0.0; 4]; 16],
     }
 }
 
 fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2]) {
-    u.res = [resolution[0].max(1) as f32, resolution[1].max(1) as f32, 0.0, 0.0];
+    u.res[0] = resolution[0].max(1) as f32;
+    u.res[1] = resolution[1].max(1) as f32;
     let Some(m) = mask.filter(|m| m.points.len() >= MASK_MIN_POINTS) else { return };
     let pts = &m.points[..m.points.len().min(MASK_MAX_POINTS)];
     for (i, p) in pts.iter().enumerate() {
@@ -422,16 +447,35 @@ fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2])
 fn surface_geometry(s: &Surface, test: bool) -> Option<(SurfaceUniform, Vec<Vertex>)> {
     let src = if test { UNIT_QUAD } else { lm_geom::quad(&s.src_pts)? };
     match s.shape {
-        Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity),
+        Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false),
+        Shape::Ellipse => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, true),
+        Shape::Triangle => triangle_geometry(s.dst_pts.get(..3)?.try_into().ok()?, &src, s.opacity),
         Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity),
     }
 }
 
-/// Fyrhörn: två trianglar, texturen följer homografin utgång → källa.
-fn quad_geometry(dst: &[[f32; 2]; 4], src: &[[f32; 2]; 4], opacity: f32) -> Option<(SurfaceUniform, Vec<Vertex>)> {
-    let h = Homography::from_points(dst, src)?;
+/// Fyrhörn (eller ellips inskriven i den): två trianglar, texturen följer
+/// homografin utgång → ytans koordinater → källa.
+fn quad_geometry(
+    dst: &[[f32; 2]; 4],
+    src: &[[f32; 2]; 4],
+    opacity: f32,
+    ellipse: bool,
+) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    let h2 = Homography::from_points(dst, &UNIT_QUAD)?;
+    let h = Homography::from_points(&UNIT_QUAD, src)?;
+    let mut u = surface_uniform(h2, h, opacity);
+    u.res[2] = if ellipse { 1.0 } else { 0.0 };
     let v = |i: usize| [dst[i][0], dst[i][1], dst[i][0], dst[i][1]];
-    Some((surface_uniform(h, opacity), [0, 1, 2, 0, 2, 3].map(v).to_vec()))
+    Some((u, [0, 1, 2, 0, 2, 3].map(v).to_vec()))
+}
+
+/// Triangel: hörnen hämtar motsvarande triangel ur källans utsnitt.
+fn triangle_geometry(dst: &[[f32; 2]; 3], src: &[[f32; 2]; 4], opacity: f32) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    let h = Homography::from_points(&UNIT_QUAD, src)?;
+    let uv = lm_geom::TRIANGLE_UV;
+    let verts = (0..3).map(|i| [dst[i][0], dst[i][1], uv[i][0], uv[i][1]]).collect();
+    Some((surface_uniform(Homography::IDENTITY, h, opacity), verts))
 }
 
 /// Mesh: tätt rutnät av trianglar längs splineytan, texturen följer (u, v).
@@ -459,7 +503,7 @@ fn mesh_geometry(
             out.extend([a, b, c, a, c, d]);
         }
     }
-    Some((surface_uniform(h, opacity), out))
+    Some((surface_uniform(Homography::IDENTITY, h, opacity), out))
 }
 
 fn make_vertices(device: &wgpu::Device, capacity: u64) -> wgpu::Buffer {
@@ -629,6 +673,14 @@ mod tests {
             .unwrap();
     }
 
+    /// `pipelines` indexeras med `blend as usize`.
+    #[test]
+    fn blend_pipeline_order() {
+        for (i, mode) in BlendMode::ALL.iter().enumerate() {
+            assert_eq!(*mode as usize, i);
+        }
+    }
+
     #[test]
     fn uniform_stride_is_aligned() {
         for align in [1, 64, 256] {
@@ -645,7 +697,7 @@ mod tests {
         let ty = module.types.iter().find(|(_, t)| t.name.as_deref() == Some("SurfaceUniform")).unwrap().1;
         let size = ty.inner.size(module.to_ctx()) as u64;
         assert_eq!(size, UNIFORM_SIZE);
-        let u = surface_uniform(Homography::IDENTITY, 1.0);
+        let u = surface_uniform(Homography::IDENTITY, Homography::IDENTITY, 1.0);
         assert_eq!(u.bytes().len() as u64, UNIFORM_SIZE);
     }
 }

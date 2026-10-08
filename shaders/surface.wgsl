@@ -1,18 +1,22 @@
 // En mappad yta, ritad som trianglar från en vertexbuffer.
 //
-// Varje vertex har sin position på utgången (`pos`) och en punkt `p` som
-// homografin `h` avbildar på källan. Texturkoordinaten räknas fram per pixel,
-// vilket ger korrekt perspektiv utan synlig diagonal söm:
-//   Fyrhörn: p = pos, h = utgång → källa.
-//   Mesh:    p = (u, v) i meshen, h = enhetskvadrat → källans utsnitt.
+// Varje vertex har sin position på utgången (`pos`) och en punkt `p`.
+// Per pixel räknas ytans egna koordinater fram, `param = h2 · p` (0..1 över
+// ytan), och sedan källans texturkoordinat, `uv = h · param`. Att det görs per
+// pixel ger korrekt perspektiv utan synlig diagonal söm:
+//   Fyrhörn/ellips: p = pos, h2 = utgång → enhetskvadrat.
+//   Mesh/triangel:  p = param direkt, h2 = identitet.
+//   h = enhetskvadrat → källans utsnitt.
 //
 // En valfri polygonmask (i utgångens koordinater) tonar ut ytan med mjuk kant.
+// Färgen lämnas förmultiplicerad med alfa så att alla blandningslägen blir rätt.
 
 struct SurfaceUniform {
     h: mat3x3<f32>,
+    h2: mat3x3<f32>,
     // x = opacitet, y = antal maskpunkter (0 = ingen mask), z = mjuk kant (px), w = 1 om inverterad
     params: vec4<f32>,
-    // xy = utgångens upplösning i pixlar
+    // xy = utgångens upplösning i pixlar, z = 1 för ellips
     res: vec4<f32>,
     // Maskpunkter, två per vec4 (xy, zw), normaliserade.
     mask: array<vec4<f32>, 16>,
@@ -82,10 +86,17 @@ fn mask_alpha(pos: vec2<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let q = u.h * vec3<f32>(in.p, 1.0);
+    let q2 = u.h2 * vec3<f32>(in.p, 1.0);
+    let param = q2.xy / q2.z;
+    let q = u.h * vec3<f32>(param, 1.0);
     let uv = q.xy / q.z;
     let c = textureSampleLevel(tex, samp, uv, 0.0);
     // Utanför källans utsnitt blir det genomskinligt.
     let inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-    return vec4<f32>(c.rgb, c.a * u.params.x * inside * mask_alpha(in.pos));
+    // Ellips: kantutjämnad cirkel i ytans koordinater.
+    let r = length(param - vec2<f32>(0.5)) * 2.0;
+    let w = max(fwidth(r), 1e-4);
+    let ellipse = select(1.0, 1.0 - smoothstep(1.0 - w, 1.0 + w, r), u.res.z > 0.5);
+    let a = c.a * u.params.x * inside * ellipse * mask_alpha(in.pos);
+    return vec4<f32>(c.rgb * a, a);
 }

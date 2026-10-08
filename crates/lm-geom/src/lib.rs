@@ -155,6 +155,35 @@ pub fn centroid(pts: &[Pt]) -> Pt {
     [sx / n, sy / n]
 }
 
+// ---------- Triangel och ellips ----------
+
+const UNIT_SQUARE: [Pt; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+
+/// Var triangelns hörn (spets, nedre höger, nedre vänster) hamnar i källans utsnitt.
+pub const TRIANGLE_UV: [Pt; 3] = [[0.5, 0.0], [1.0, 1.0], [0.0, 1.0]];
+
+/// Triangel inskriven i fyrhörningen: spetsen mitt på överkanten.
+pub fn triangle_from_quad(q: &[Pt; 4]) -> [Pt; 3] {
+    [lerp(q[0], q[1], 0.5), q[2], q[3]]
+}
+
+/// Fyrhörning som triangeln är inskriven i (omvändningen av `triangle_from_quad`).
+pub fn quad_from_triangle(t: &[Pt; 3]) -> [Pt; 4] {
+    let half = [(t[1][0] - t[2][0]) * 0.5, (t[1][1] - t[2][1]) * 0.5];
+    [[t[0][0] - half[0], t[0][1] - half[1]], [t[0][0] + half[0], t[0][1] + half[1]], t[1], t[2]]
+}
+
+/// Ellipsen inskriven i fyrhörningen `q`, perspektivriktigt, som `n` punkter.
+pub fn ellipse_outline(q: &[Pt; 4], n: usize) -> Vec<Pt> {
+    let Some(h) = Homography::from_points(&UNIT_SQUARE, q) else { return q.to_vec() };
+    (0..n)
+        .filter_map(|i| {
+            let a = i as f32 / n as f32 * std::f32::consts::TAU;
+            h.apply([0.5 + 0.5 * a.cos(), 0.5 + 0.5 * a.sin()])
+        })
+        .collect()
+}
+
 // ---------- Mesh ----------
 //
 // Ett mesh är `cols × rows` kontrollpunkter (radvis, övre vänster först). Ytan
@@ -249,6 +278,24 @@ pub fn mesh_from_quad(quad: &[Pt; 4], cols: usize, rows: usize) -> Vec<Pt> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn triangle_quad_roundtrip() {
+        let q = [[0.1, 0.2], [0.7, 0.2], [0.8, 0.9], [0.0, 0.9]];
+        let t = triangle_from_quad(&q);
+        assert!(close(t[0], [0.4, 0.2]));
+        let back = triangle_from_quad(&quad_from_triangle(&t));
+        for i in 0..3 {
+            assert!(close(back[i], t[i]));
+        }
+    }
+
+    #[test]
+    fn ellipse_touches_quad_edges() {
+        let e = ellipse_outline(&UNIT, 4);
+        assert!(close(e[0], [1.0, 0.5]));
+        assert!(close(e[1], [0.5, 1.0]));
+    }
 
     #[test]
     fn mesh_2x2_is_bilinear() {

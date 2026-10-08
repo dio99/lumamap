@@ -4,7 +4,7 @@
 use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
-use lm_core::{Command, Mask, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
+use lm_core::{BlendMode, Command, Mask, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
 use std::time::Duration;
 
 const FILES: &[&str] = &[
@@ -46,10 +46,16 @@ impl LumaApp {
                     self.add_files(files, None);
                 }
             }
-            if ui.button("⬜ Ny yta").on_hover_text("Lägg till en fyrhörnig yta").clicked() {
-                let src = self.selected_source;
-                self.add_surface(src);
-            }
+            ui.menu_button("⬜ Ny yta ▾", |ui| {
+                for (shape, label) in SHAPES {
+                    if ui.button(label).clicked() {
+                        let src = self.selected_source;
+                        self.add_shaped(src, shape);
+                    }
+                }
+            })
+            .response
+            .on_hover_text("Lägg till en yta");
             ui.separator();
             if ui.add_enabled(self.history.can_undo(), egui::Button::new("⮪")).on_hover_text("Ångra (Ctrl+Z)").clicked() {
                 self.history.undo(&mut self.project);
@@ -313,14 +319,13 @@ impl LumaApp {
             }
 
             ui.label("Form");
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let mut shape = s.shape;
-                let is_mesh = matches!(shape, Shape::Mesh { .. });
-                if ui.selectable_label(!is_mesh, "Fyrhörn").on_hover_text("Fyra hörn, perspektivriktig").clicked() {
-                    shape = Shape::Quad;
-                }
-                if ui.selectable_label(is_mesh, "Mesh").on_hover_text("Rutnät av punkter för böjda ytor, t.ex. pelare").clicked() && !is_mesh {
-                    shape = Shape::Mesh { cols: 4, rows: 4 };
+                for (option, label) in SHAPES {
+                    let same = std::mem::discriminant(&option) == std::mem::discriminant(&shape);
+                    if ui.selectable_label(same, label).on_hover_text(shape_hint(option)).clicked() && !same {
+                        shape = option;
+                    }
                 }
                 if let Shape::Mesh { cols, rows } = &mut shape {
                     ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(" kol"))
@@ -331,6 +336,14 @@ impl LumaApp {
                 if shape != s.shape {
                     reshape(&mut s, shape);
                     self.selected_point = None;
+                }
+            });
+            ui.end_row();
+
+            ui.label("Blandning");
+            egui::ComboBox::from_id_salt("blend_pick").selected_text(s.blend.label()).width(170.0).show_ui(ui, |ui| {
+                for mode in BlendMode::ALL {
+                    ui.selectable_value(&mut s.blend, mode, mode.label()).on_hover_text(blend_hint(mode));
                 }
             });
             ui.end_row();
@@ -377,6 +390,7 @@ impl LumaApp {
                 copy.name = format!("{} kopia", s.name);
                 copy.shape = s.shape;
                 copy.mask = s.mask.clone();
+                copy.blend = s.blend;
                 copy.src_pts = s.src_pts.clone();
                 copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
                 copy.opacity = s.opacity;
@@ -613,30 +627,67 @@ impl LumaApp {
     }
 }
 
-/// Punkter för `shape` som täcker fyrhörningen `quad`.
-fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
+const SHAPES: [(Shape, &str); 4] = [
+    (Shape::Quad, "Fyrhörn"),
+    (Shape::Triangle, "Triangel"),
+    (Shape::Ellipse, "Ellips"),
+    (Shape::Mesh { cols: 4, rows: 4 }, "Mesh"),
+];
+
+fn shape_hint(shape: Shape) -> &'static str {
     match shape {
-        Shape::Quad => quad.to_vec(),
+        Shape::Quad => "Fyra hörn, perspektivriktig",
+        Shape::Triangle => "Tre hörn, t.ex. en gavel",
+        Shape::Ellipse => "Rund yta inuti fyra hörn – blir en perspektivriktig ellips",
+        Shape::Mesh { .. } => "Rutnät av punkter för böjda ytor, t.ex. pelare",
+    }
+}
+
+fn blend_hint(mode: BlendMode) -> &'static str {
+    match mode {
+        BlendMode::Normal => "Ytan täcker det som ligger under",
+        BlendMode::Add => "Ljuset adderas – svart blir genomskinligt",
+        BlendMode::Multiply => "Mörkar ner det som ligger under – vitt blir genomskinligt",
+        BlendMode::Screen => "Ljusar upp mjukt – svart blir genomskinligt",
+    }
+}
+
+/// Punkter för `shape` som täcker fyrhörningen `quad`.
+pub(crate) fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
+    match shape {
+        Shape::Quad | Shape::Ellipse => quad.to_vec(),
+        Shape::Triangle => lm_geom::triangle_from_quad(quad).to_vec(),
         Shape::Mesh { cols, rows } => lm_geom::mesh_from_quad(quad, cols as usize, rows as usize),
+    }
+}
+
+/// Fyrhörningen som ytan fyller (för triangel: den den är inskriven i).
+fn surface_quad(s: &Surface) -> Option<[Pt; 4]> {
+    match s.shape {
+        Shape::Quad | Shape::Ellipse => lm_geom::quad(&s.dst_pts),
+        Shape::Triangle => Some(lm_geom::quad_from_triangle(s.dst_pts.get(..3)?.try_into().ok()?)),
+        Shape::Mesh { cols, rows } => {
+            let (c, r) = (cols as usize, rows as usize);
+            let p = &s.dst_pts;
+            Some([p[0], p[c - 1], p[c * r - 1], p[c * (r - 1)]])
+        }
     }
 }
 
 /// Byter form (eller meshupplösning) utan att ytan hoppar: den nya formen
 /// samplas från den gamla.
-fn reshape(s: &mut Surface, to: Shape) {
+pub(crate) fn reshape(s: &mut Surface, to: Shape) {
+    if s.shape == to {
+        return;
+    }
     s.dst_pts = match (s.shape, to) {
-        (Shape::Quad, Shape::Quad) => return,
-        (Shape::Quad, _) => match lm_geom::quad(&s.dst_pts) {
-            Some(q) => shape_points(to, &q),
-            None => return,
-        },
-        (Shape::Mesh { cols, rows }, Shape::Quad) => {
-            let (c, r) = (cols as usize, rows as usize);
-            vec![s.dst_pts[0], s.dst_pts[c - 1], s.dst_pts[c * r - 1], s.dst_pts[c * (r - 1)]]
-        }
         (Shape::Mesh { cols, rows }, Shape::Mesh { cols: nc, rows: nr }) => {
             lm_geom::mesh_grid(&s.dst_pts, cols as usize, rows as usize, nc as usize, nr as usize)
         }
+        _ => match surface_quad(s) {
+            Some(q) => shape_points(to, &q),
+            None => return,
+        },
     };
     s.shape = to;
 }
@@ -654,6 +705,20 @@ mod tests {
 
     fn close(a: Pt, b: Pt) -> bool {
         (a[0] - b[0]).abs() < 1e-4 && (a[1] - b[1]).abs() < 1e-4
+    }
+
+    #[test]
+    fn every_shape_roundtrips_through_quad() {
+        let corners = vec![[0.1, 0.2], [0.8, 0.2], [0.9, 0.9], [0.2, 0.9]];
+        for (shape, _) in SHAPES {
+            let mut s = surface(corners.clone());
+            reshape(&mut s, shape);
+            assert_eq!(s.dst_pts.len(), shape.point_count(), "{shape:?}");
+            reshape(&mut s, Shape::Quad);
+            for (a, b) in s.dst_pts.iter().zip(&corners) {
+                assert!(close(*a, *b), "{shape:?}: {a:?} != {b:?}");
+            }
+        }
     }
 
     #[test]

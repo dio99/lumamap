@@ -77,6 +77,10 @@ pub enum Shape {
     /// Fyra hörn, perspektivriktig (homografi).
     #[default]
     Quad,
+    /// Tre hörn: spets, nedre höger, nedre vänster. Visar motsvarande triangel ur källan.
+    Triangle,
+    /// Ellips inskriven i fyra hörn (samma ordning som fyrhörn), perspektivriktig.
+    Ellipse,
     /// Rutnät med `cols × rows` kontrollpunkter (radvis) för böjda ytor.
     Mesh { cols: u32, rows: u32 },
 }
@@ -88,7 +92,8 @@ impl Shape {
     /// Antal punkter i `dst_pts` för formen.
     pub fn point_count(&self) -> usize {
         match *self {
-            Shape::Quad => 4,
+            Shape::Quad | Shape::Ellipse => 4,
+            Shape::Triangle => 3,
             Shape::Mesh { cols, rows } => (cols * rows) as usize,
         }
     }
@@ -115,6 +120,34 @@ pub struct Surface {
     pub locked: bool,
     #[serde(default)]
     pub mask: Option<Mask>,
+    #[serde(default)]
+    pub blend: BlendMode,
+}
+
+/// Hur ytan blandas med det som ligger under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BlendMode {
+    #[default]
+    Normal,
+    /// Ljuset adderas – bra för ljuseffekter och överlapp.
+    Add,
+    /// Mörkar ner det under – bra för skuggor och texturer.
+    Multiply,
+    /// Ljusar upp mjukt utan att bränna ut.
+    Screen,
+}
+
+impl BlendMode {
+    pub const ALL: [BlendMode; 4] = [BlendMode::Normal, BlendMode::Add, BlendMode::Multiply, BlendMode::Screen];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BlendMode::Normal => "Normal",
+            BlendMode::Add => "Addera",
+            BlendMode::Multiply => "Multiplicera",
+            BlendMode::Screen => "Screen",
+        }
+    }
 }
 
 /// Polygonmask i utgångens koordinater – ligger kvar på väggen när ytan justeras.
@@ -243,6 +276,7 @@ impl Project {
             visible: true,
             locked: false,
             mask: None,
+            blend: BlendMode::Normal,
         }
     }
 

@@ -88,12 +88,20 @@ impl LumaApp {
         }
     }
 
-    /// Ytans kontur (normaliserad). För mesh följer den kurvorna.
+    /// Om vyn visar ytan som ellips (hörnen är då en ram runt ellipsen).
+    fn is_ellipse(&self, id: SurfaceId, kind: PtKind) -> bool {
+        matches!(kind, PtKind::Dst(_)) && self.project.surface(id).is_some_and(|s| s.shape == Shape::Ellipse)
+    }
+
+    /// Ytans kontur (normaliserad). För mesh och ellips följer den kurvorna.
     fn outline(&self, id: SurfaceId, kind: PtKind) -> Vec<Pt> {
         let pts = self.points(id, kind).unwrap_or_default();
-        match self.mesh_size(id, kind) {
-            Some((c, r)) => lm_geom::mesh_outline(pts, c, r, CURVE_STEPS),
-            None => pts.to_vec(),
+        if let Some((c, r)) = self.mesh_size(id, kind) {
+            return lm_geom::mesh_outline(pts, c, r, CURVE_STEPS);
+        }
+        match lm_geom::quad(pts) {
+            Some(q) if self.is_ellipse(id, kind) => lm_geom::ellipse_outline(&q, 64),
+            _ => pts.to_vec(),
         }
     }
 
@@ -235,7 +243,12 @@ impl LumaApp {
                     painter.add(egui::Shape::closed_line(pts, Stroke::new(1.0, MASK_COLOR.gamma_multiply(0.7))));
                 }
             }
-            if selected && mesh.is_none() && !matches!(kind, PtKind::Mask(_)) {
+            let ellipse = self.is_ellipse(id, kind);
+            if selected && ellipse {
+                // Ramen som ellipsen är inskriven i.
+                painter.add(egui::Shape::closed_line(pts.clone(), Stroke::new(1.0, color.gamma_multiply(0.4))));
+            }
+            if selected && mesh.is_none() && !ellipse && !matches!(kind, PtKind::Mask(_)) {
                 painter.add(egui::Shape::convex_polygon(
                     pts.clone(),
                     Color32::from_rgba_unmultiplied(0, 190, 255, 18),
