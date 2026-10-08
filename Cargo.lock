@@ -1650,6 +1650,7 @@ dependencies = [
  "lm-geom",
  "lm-media",
  "log",
+ "naga",
 ]
 
 [[package]]

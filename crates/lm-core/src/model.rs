@@ -113,7 +113,24 @@ pub struct Surface {
     pub visible: bool,
     #[serde(default)]
     pub locked: bool,
+    #[serde(default)]
+    pub mask: Option<Mask>,
 }
+
+/// Polygonmask i utgångens koordinater – ligger kvar på väggen när ytan justeras.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Mask {
+    pub points: Vec<Pt>,
+    /// Mjuk kant i projektorpixlar.
+    #[serde(default)]
+    pub feather: f32,
+    /// `false` = visa bara inuti, `true` = dölj inuti (hål).
+    #[serde(default)]
+    pub invert: bool,
+}
+
+pub const MASK_MIN_POINTS: usize = 3;
+pub const MASK_MAX_POINTS: usize = 32;
 
 fn one() -> f32 {
     1.0
@@ -225,6 +242,7 @@ impl Project {
             opacity: 1.0,
             visible: true,
             locked: false,
+            mask: None,
         }
     }
 
@@ -270,6 +288,13 @@ impl Project {
             }
             if s.src_pts.len() != 4 {
                 s.src_pts = UNIT_QUAD.to_vec();
+            }
+            if let Some(m) = &mut s.mask {
+                m.points.truncate(MASK_MAX_POINTS);
+                m.feather = m.feather.max(0.0);
+            }
+            if s.mask.as_ref().is_some_and(|m| m.points.len() < MASK_MIN_POINTS) {
+                s.mask = None;
             }
         }
     }

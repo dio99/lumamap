@@ -131,6 +131,24 @@ pub fn nearest_point(p: Pt, pts: &[Pt], radius: f32) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// Närmaste kant i den slutna polygonen `poly` inom `radius`.
+/// Ger index där en ny punkt ska infogas och punkten på kanten.
+pub fn nearest_edge(p: Pt, poly: &[Pt], radius: f32) -> Option<(usize, Pt)> {
+    let n = poly.len();
+    (0..n)
+        .map(|i| {
+            let (a, b) = (poly[i], poly[(i + 1) % n]);
+            let e = [b[0] - a[0], b[1] - a[1]];
+            let len2 = (e[0] * e[0] + e[1] * e[1]).max(1e-12);
+            let t = (((p[0] - a[0]) * e[0] + (p[1] - a[1]) * e[1]) / len2).clamp(0.0, 1.0);
+            let q = [a[0] + e[0] * t, a[1] + e[1] * t];
+            (i + 1, q, dist2(p, q))
+        })
+        .filter(|(_, _, d)| *d <= radius * radius)
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(i, q, _)| (i, q))
+}
+
 pub fn centroid(pts: &[Pt]) -> Pt {
     let n = pts.len().max(1) as f32;
     let (sx, sy) = pts.iter().fold((0.0, 0.0), |(x, y), p| (x + p[0], y + p[1]));
@@ -305,6 +323,14 @@ mod tests {
     fn polygon_hit() {
         assert!(point_in_polygon([0.5, 0.5], &UNIT));
         assert!(!point_in_polygon([1.5, 0.5], &UNIT));
+    }
+
+    #[test]
+    fn edge_insert() {
+        let (i, q) = nearest_edge([0.5, 1.02], &UNIT, 0.05).unwrap();
+        assert_eq!(i, 3);
+        assert!(close(q, [0.5, 1.0]));
+        assert!(nearest_edge([0.5, 0.5], &UNIT, 0.05).is_none());
     }
 
     #[test]

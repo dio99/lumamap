@@ -3,7 +3,7 @@
 
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::util::DeviceExt;
-use lm_core::{OutputId, Project, Shape, SourceId, Surface, SurfaceId, UNIT_QUAD};
+use lm_core::{Mask, OutputId, Project, Shape, SourceId, Surface, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS, UNIT_QUAD};
 use lm_geom::Homography;
 use lm_media::FrameView;
 use std::collections::{HashMap, HashSet};
@@ -14,7 +14,7 @@ pub use egui_wgpu;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-const UNIFORM_SIZE: u64 = 64;
+const UNIFORM_SIZE: u64 = 48 + 16 + 16 + 16 * 16;
 /// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
 const MESH_SUBDIV: usize = 12;
 
@@ -23,6 +23,8 @@ const MESH_SUBDIV: usize = 12;
 struct SurfaceUniform {
     h: [[f32; 4]; 3],
     params: [f32; 4],
+    res: [f32; 4],
+    mask: [[f32; 4]; 16],
 }
 
 /// Position på utgången + punkt som homografin avbildar på källan.
@@ -44,7 +46,9 @@ impl SurfaceUniform {
             .h
             .iter()
             .flatten()
-            .chain(self.params.iter());
+            .chain(self.params.iter())
+            .chain(self.res.iter())
+            .chain(self.mask.iter().flatten());
         for f in floats {
             out.extend_from_slice(&f.to_le_bytes());
         }
@@ -186,7 +190,7 @@ impl Renderer {
             ..Default::default()
         });
 
-        let uniform_stride = (device.limits().min_uniform_buffer_offset_alignment as u64).max(UNIFORM_SIZE);
+        let uniform_stride = uniform_stride(device.limits().min_uniform_buffer_offset_alignment as u64);
         let uniform_capacity = 64;
         let (uniform_buf, uniform_bg) = make_uniforms(device, &uni_layout, uniform_stride, uniform_capacity);
         let vertex_capacity = 4096;
@@ -302,7 +306,8 @@ impl Renderer {
                 if !test && tex.is_none_or(|id| !self.sources.contains_key(&id)) {
                     continue;
                 }
-                if let Some(geo) = surface_geometry(s, test) {
+                if let Some(mut geo) = surface_geometry(s, test) {
+                    apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution);
                     push_draw(&mut draws, &mut vertices, out.id, tex, geo);
                 }
             }
@@ -368,6 +373,12 @@ impl Renderer {
     }
 }
 
+/// Avstånd mellan uniformerna i bufferten: minst en uniform, och en multipel
+/// av GPU:ns krav på justering för dynamiska offset.
+fn uniform_stride(alignment: u64) -> u64 {
+    UNIFORM_SIZE.next_multiple_of(alignment.max(1))
+}
+
 fn push_draw(
     draws: &mut Vec<Draw>,
     vertices: &mut Vec<Vertex>,
@@ -389,7 +400,22 @@ fn surface_uniform(h: Homography, opacity: f32) -> SurfaceUniform {
     SurfaceUniform {
         h: h.to_gpu(),
         params: [opacity.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
+        res: [1.0; 4],
+        mask: [[0.0; 4]; 16],
     }
+}
+
+fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2]) {
+    u.res = [resolution[0].max(1) as f32, resolution[1].max(1) as f32, 0.0, 0.0];
+    let Some(m) = mask.filter(|m| m.points.len() >= MASK_MIN_POINTS) else { return };
+    let pts = &m.points[..m.points.len().min(MASK_MAX_POINTS)];
+    for (i, p) in pts.iter().enumerate() {
+        u.mask[i / 2][(i % 2) * 2] = p[0];
+        u.mask[i / 2][(i % 2) * 2 + 1] = p[1];
+    }
+    u.params[1] = pts.len() as f32;
+    u.params[2] = m.feather.max(0.0);
+    u.params[3] = if m.invert { 1.0 } else { 0.0 };
 }
 
 /// Uniform och trianglar för en yta. `test` = visa testbilden över hela ytan.
@@ -587,4 +613,39 @@ fn write_frame(queue: &wgpu::Queue, texture: &wgpu::Texture, frame: &FrameView) 
             depth_or_array_layers: 1,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Shadern valideras annars först när appen startar.
+    #[test]
+    fn shader_is_valid() {
+        let module = naga::front::wgsl::parse_str(include_str!("../../../shaders/surface.wgsl"))
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string("surface.wgsl")));
+        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default())
+            .validate(&module)
+            .unwrap();
+    }
+
+    #[test]
+    fn uniform_stride_is_aligned() {
+        for align in [1, 64, 256] {
+            let stride = uniform_stride(align);
+            assert!(stride >= UNIFORM_SIZE);
+            assert_eq!(stride % align, 0);
+        }
+    }
+
+    /// Uniformens storlek i Rust måste stämma med WGSL-structen.
+    #[test]
+    fn uniform_layout_matches_shader() {
+        let module = naga::front::wgsl::parse_str(include_str!("../../../shaders/surface.wgsl")).unwrap();
+        let ty = module.types.iter().find(|(_, t)| t.name.as_deref() == Some("SurfaceUniform")).unwrap().1;
+        let size = ty.inner.size(module.to_ctx()) as u64;
+        assert_eq!(size, UNIFORM_SIZE);
+        let u = surface_uniform(Homography::IDENTITY, 1.0);
+        assert_eq!(u.bytes().len() as u64, UNIFORM_SIZE);
+    }
 }

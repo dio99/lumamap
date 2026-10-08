@@ -4,7 +4,7 @@
 use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
-use lm_core::{Command, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
+use lm_core::{Command, Mask, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
 use std::time::Duration;
 
 const FILES: &[&str] = &[
@@ -376,6 +376,7 @@ impl LumaApp {
                 let mut copy = self.project.make_quad(s.source, s.output);
                 copy.name = format!("{} kopia", s.name);
                 copy.shape = s.shape;
+                copy.mask = s.mask.clone();
                 copy.src_pts = s.src_pts.clone();
                 copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
                 copy.opacity = s.opacity;
@@ -389,6 +390,61 @@ impl LumaApp {
                 self.remove_selected();
             }
         });
+
+        // Mask
+        ui.add_space(14.0);
+        ui.heading("Mask");
+        match &mut s.mask {
+            None => {
+                ui.label(RichText::new("Dölj delar av ytan, t.ex. ett fönster eller en dörr.").color(Color32::from_gray(140)));
+                if ui.button("➕ Mask").clicked() {
+                    // Rektangel lite innanför ytan att börja dra i.
+                    let xs = s.dst_pts.iter().map(|p| p[0]);
+                    let ys = s.dst_pts.iter().map(|p| p[1]);
+                    let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+                    let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+                    let (dx, dy) = ((x1 - x0) * 0.2, (y1 - y0) * 0.2);
+                    let (x0, x1, y0, y1) = (x0 + dx, x1 - dx, y0 + dy, y1 - dy);
+                    s.mask = Some(Mask {
+                        points: vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                        feather: 0.0,
+                        invert: true,
+                    });
+                    self.mask_edit = true;
+                    self.selected_point = None;
+                }
+            }
+            Some(m) => {
+                ui.horizontal(|ui| {
+                    if ui
+                        .toggle_value(&mut self.mask_edit, "✏ Redigera mask")
+                        .on_hover_text("Dra maskens punkter i stället för ytans hörn")
+                        .changed()
+                    {
+                        self.selected_point = None;
+                    }
+                    ui.radio_value(&mut m.invert, true, "Dölj inuti");
+                    ui.radio_value(&mut m.invert, false, "Visa inuti");
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Mjuk kant");
+                    let r = ui.add(egui::Slider::new(&mut m.feather, 0.0..=200.0).suffix(" px"));
+                    if r.changed() {
+                        gesture = Some(self.field_gesture(&r));
+                    }
+                });
+                if self.mask_edit {
+                    ui.label(
+                        RichText::new("Dubbelklicka på en kant för ny punkt, högerklicka på en punkt för att ta bort den.")
+                            .color(Color32::from_gray(140)),
+                    );
+                }
+                if ui.button("🗑 Ta bort mask").clicked() {
+                    s.mask = None;
+                    self.mask_edit = false;
+                }
+            }
+        }
 
         if self.project.surface(before.id).is_some() && s != before && self.selected == Some(before.id) {
             self.exec(Command::ReplaceSurface(s.clone()), gesture);
@@ -552,7 +608,8 @@ impl LumaApp {
                 Color32::from_gray(if dragging_file { 230 } else { 110 }),
             );
         }
-        self.canvas(ui, rect, PtKind::Dst(out.id), "editor");
+        let kind = self.edit_kind(out.id);
+        self.canvas(ui, rect, kind, "editor");
     }
 }
 

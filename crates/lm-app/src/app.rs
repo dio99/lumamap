@@ -37,6 +37,8 @@ pub struct LumaApp {
     pub selected_point: Option<usize>,
     pub selected_source: Option<lm_core::SourceId>,
     pub drag: Option<Drag>,
+    /// Vyerna redigerar markerad ytas mask i stället för ytorna.
+    pub mask_edit: bool,
     next_gesture: u64,
     field_gesture: Option<(egui::Id, u64)>,
 
@@ -78,6 +80,7 @@ impl LumaApp {
             selected_point: None,
             selected_source: None,
             drag: None,
+            mask_edit: false,
             next_gesture: 0,
             field_gesture: None,
             show_mode: false,
@@ -138,6 +141,7 @@ impl LumaApp {
     pub fn select(&mut self, id: Option<SurfaceId>) {
         if self.selected != id {
             self.selected_point = None;
+            self.mask_edit = false;
         }
         self.selected = id;
         if let Some(s) = id.and_then(|id| self.project.surface(id)) {
@@ -290,6 +294,7 @@ impl LumaApp {
         self.selected_point = None;
         self.selected_source = None;
         self.drag = None;
+        self.mask_edit = false;
         self.opts = RenderOptions::default();
     }
 
@@ -445,8 +450,12 @@ impl LumaApp {
             self.toggle_play_all();
         }
         if next_pt {
-            // C = välj nästa hörn på markerad yta.
-            if let Some(n) = self.selected.and_then(|id| self.project.surface(id)).map(|s| s.dst_pts.len()) {
+            // C = välj nästa hörn på markerad yta (eller dess mask).
+            let n = self.selected.and_then(|id| self.project.surface(id)).map(|s| match (&s.mask, self.mask_edit) {
+                (Some(m), true) => m.points.len(),
+                _ => s.dst_pts.len(),
+            });
+            if let Some(n) = n {
                 self.selected_point = Some(self.selected_point.map_or(0, |p| (p + 1) % n));
             }
         }
@@ -464,14 +473,18 @@ impl LumaApp {
         }
         let res = self.project.output(s.output).map(|o| o.resolution).unwrap_or([1920, 1080]);
         let d = [dir[0] * px / res[0] as f32, dir[1] * px / res[1] as f32];
-        let (mut pts, out) = (s.dst_pts.clone(), s.output);
+        let kind = self.edit_kind(s.output);
+        let mut pts = match (kind, &s.mask) {
+            (PtKind::Mask(_), Some(m)) => m.points.clone(),
+            _ => s.dst_pts.clone(),
+        };
         for (i, p) in pts.iter_mut().enumerate() {
             if self.selected_point.is_none_or(|sp| sp == i) {
                 p[0] += d[0];
                 p[1] += d[1];
             }
         }
-        self.set_points(id, PtKind::Dst(out), pts, None);
+        self.set_points(id, kind, pts, None);
     }
 
     pub fn toggle_play_all(&mut self) {
@@ -578,7 +591,8 @@ impl LumaApp {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                         }
                     } else {
-                        self.canvas(ui, rect, PtKind::Dst(id), "output");
+                        let kind = self.edit_kind(id);
+                        self.canvas(ui, rect, kind, "output");
                         if !is_fs {
                             ui.painter().text(
                                 rect.left_bottom() + egui::vec2(10.0, -10.0),

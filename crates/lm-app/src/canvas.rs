@@ -3,7 +3,7 @@
 
 use crate::app::LumaApp;
 use eframe::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Stroke, Ui};
-use lm_core::{Command, OutputId, Pt, Shape, SurfaceId};
+use lm_core::{Command, OutputId, Pt, Shape, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS};
 
 /// Vilka punkter vyn redigerar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -12,6 +12,8 @@ pub enum PtKind {
     Dst(OutputId),
     /// Vilket utsnitt av källan som visas.
     Src,
+    /// Markerad ytas mask på utgången.
+    Mask(OutputId),
 }
 
 pub struct Drag {
@@ -25,6 +27,7 @@ pub struct Drag {
 }
 
 pub const ACCENT: Color32 = Color32::from_rgb(0, 190, 255);
+pub const MASK_COLOR: Color32 = Color32::from_rgb(255, 150, 40);
 const HANDLE_HIT: f32 = 14.0;
 /// Antal linjesegment mellan två kontrollpunkter när meshkurvor ritas.
 const CURVE_STEPS: usize = 8;
@@ -48,6 +51,23 @@ impl LumaApp {
         match kind {
             PtKind::Dst(out) => self.project.surfaces.iter().filter(|s| s.output == out).map(|s| s.id).collect(),
             PtKind::Src => self.selected.into_iter().collect(),
+            PtKind::Mask(out) => self
+                .selected
+                .and_then(|id| self.project.surface(id))
+                .filter(|s| s.output == out && s.mask.is_some())
+                .map(|s| s.id)
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    /// Vad en vy av utgången `out` ska redigera: ytor, eller markerad ytas mask.
+    pub fn edit_kind(&self, out: OutputId) -> PtKind {
+        let has_mask = self.selected.and_then(|id| self.project.surface(id)).is_some_and(|s| s.mask.is_some());
+        if self.mask_edit && has_mask {
+            PtKind::Mask(out)
+        } else {
+            PtKind::Dst(out)
         }
     }
 
@@ -56,6 +76,7 @@ impl LumaApp {
         Some(match kind {
             PtKind::Dst(_) => &s.dst_pts,
             PtKind::Src => &s.src_pts,
+            PtKind::Mask(_) => &s.mask.as_ref()?.points,
         })
     }
 
@@ -119,7 +140,7 @@ impl LumaApp {
                 match self.hit(rect, kind, origin) {
                     Some((id, point)) => {
                         self.select(Some(id));
-                        self.selected_point = point;
+                        self.selected_point = point.filter(|_| kind != PtKind::Src);
                         let locked = self.project.surface(id).is_some_and(|s| s.locked);
                         if !locked {
                             self.drag = Some(Drag {
@@ -165,11 +186,15 @@ impl LumaApp {
             self.drag = None;
         }
 
+        if let (PtKind::Mask(_), Some(pos)) = (kind, pointer) {
+            self.mask_click(&resp, rect, pos);
+        }
+
         if resp.clicked() {
             match pointer.and_then(|p| self.hit(rect, kind, p)) {
                 Some((id, point)) => {
                     self.select(Some(id));
-                    self.selected_point = point;
+                    self.selected_point = point.filter(|_| kind != PtKind::Src);
                 }
                 None if matches!(kind, PtKind::Dst(_)) => self.select(None),
                 None => {}
@@ -195,14 +220,22 @@ impl LumaApp {
             let outline: Vec<Pos2> = self.outline(id, kind).iter().map(|p| to_screen(rect, *p)).collect();
             let mesh = self.mesh_size(id, kind);
             let selected = self.selected == Some(id);
-            let color = if !s.visible {
+            let color = if matches!(kind, PtKind::Mask(_)) {
+                MASK_COLOR
+            } else if !s.visible {
                 Color32::from_gray(90)
             } else if selected {
                 ACCENT
             } else {
                 Color32::from_rgba_unmultiplied(255, 255, 255, 140)
             };
-            if selected && mesh.is_none() {
+            if selected && matches!(kind, PtKind::Dst(_)) {
+                if let Some(m) = &s.mask {
+                    let pts = m.points.iter().map(|p| to_screen(rect, *p)).collect();
+                    painter.add(egui::Shape::closed_line(pts, Stroke::new(1.0, MASK_COLOR.gamma_multiply(0.7))));
+                }
+            }
+            if selected && mesh.is_none() && !matches!(kind, PtKind::Mask(_)) {
                 painter.add(egui::Shape::convex_polygon(
                     pts.clone(),
                     Color32::from_rgba_unmultiplied(0, 190, 255, 18),
@@ -242,14 +275,15 @@ impl LumaApp {
 
             for (i, p) in pts.iter().enumerate() {
                 if selected {
-                    let active = self.selected_point == Some(i);
+                    // Valt hörn gäller ytans eller maskens punkter, aldrig utsnittet.
+                    let active = kind != PtKind::Src && self.selected_point == Some(i);
                     let r = match (active, mesh.is_some()) {
                         (true, _) => 8.0,
                         (false, true) => 5.0,
                         (false, false) => 6.0,
                     };
                     let fill = if active { Color32::from_rgb(255, 170, 0) } else { Color32::WHITE };
-                    painter.circle(*p, r, fill, Stroke::new(2.0, ACCENT));
+                    painter.circle(*p, r, fill, Stroke::new(2.0, if matches!(kind, PtKind::Mask(_)) { MASK_COLOR } else { ACCENT }));
                 } else {
                     painter.circle_filled(*p, 3.5, color);
                 }
@@ -262,7 +296,37 @@ impl LumaApp {
         match kind {
             PtKind::Dst(_) => s.dst_pts = pts,
             PtKind::Src => s.src_pts = pts,
+            PtKind::Mask(_) => match &mut s.mask {
+                Some(m) => m.points = pts,
+                None => return,
+            },
         }
         self.exec(Command::ReplaceSurface(s), gesture);
+    }
+
+    /// Maskredigering: dubbelklick på en kant lägger till en punkt,
+    /// högerklick på en punkt tar bort den.
+    fn mask_click(&mut self, resp: &egui::Response, rect: Rect, pos: Pos2) {
+        let Some(id) = self.selected else { return };
+        let Some(s) = self.project.surface(id).cloned() else { return };
+        let (Some(mut m), false) = (s.mask.clone(), s.locked) else { return };
+        let screen: Vec<Pt> = m.points.iter().map(|p| to_screen(rect, *p)).map(|p| [p.x, p.y]).collect();
+        let p = [pos.x, pos.y];
+        if resp.double_clicked() && m.points.len() < MASK_MAX_POINTS {
+            if let Some((i, q)) = lm_geom::nearest_edge(p, &screen, HANDLE_HIT) {
+                m.points.insert(i, [(q[0] - rect.min.x) / rect.width(), (q[1] - rect.min.y) / rect.height()]);
+                self.selected_point = Some(i);
+            }
+        } else if resp.secondary_clicked() && m.points.len() > MASK_MIN_POINTS {
+            if let Some(i) = lm_geom::nearest_point(p, &screen, HANDLE_HIT) {
+                m.points.remove(i);
+                self.selected_point = None;
+            }
+        }
+        if Some(&m) != s.mask.as_ref() {
+            let mut ns = s;
+            ns.mask = Some(m);
+            self.exec(Command::ReplaceSurface(ns), None);
+        }
     }
 }
