@@ -100,6 +100,16 @@ pub enum SourceKind {
         rgba: [f32; 4],
     },
     TestPattern,
+    /// Kamera via V4L2, t.ex. `/dev/video0`.
+    Camera {
+        device: String,
+    },
+    /// Nätverksström eller annan URI som GStreamer förstår (rtsp://, srt://, udp://, http://…).
+    Stream {
+        uri: String,
+        #[serde(default)]
+        muted: bool,
+    },
 }
 
 fn yes() -> bool {

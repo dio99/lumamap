@@ -69,6 +69,10 @@ pub struct LumaApp {
     pub osc_last: Option<(String, Instant)>,
     pub osc_gestures: HashMap<SurfaceId, (u64, Instant)>,
     pub osc_window_open: bool,
+    /// Kameror som hittats (söks först när menyn öppnas).
+    pub cameras: Option<Vec<lm_media::CameraInfo>>,
+    /// Adressfältet för en ny ström, när det är öppet.
+    pub stream_input: Option<String>,
     pub editor_canvas: Option<egui::Rect>,
 }
 
@@ -113,6 +117,8 @@ impl LumaApp {
             osc_last: None,
             osc_gestures: HashMap::new(),
             osc_window_open: false,
+            cameras: None,
+            stream_input: None,
             editor_canvas: None,
         };
 
@@ -281,6 +287,24 @@ impl LumaApp {
         self.exec(Command::RemoveOutput(id), None);
         if self.current_output == id {
             self.select_output(self.project.outputs[0].id);
+        }
+    }
+
+    /// Lägger till en källa och visar den direkt på markerad yta, eller på en ny yta.
+    pub fn add_source_shown(&mut self, name: impl Into<String>, kind: SourceKind) {
+        let src = self.project.make_source(name, kind);
+        let sid = src.id;
+        let index = self.project.sources.len();
+        self.exec(Command::AddSource { source: src, index }, None);
+        self.selected_source = Some(sid);
+        match self.selected.and_then(|id| self.project.surface(id).cloned()) {
+            Some(mut s) if s.source.is_none() => {
+                s.source = Some(sid);
+                self.exec(Command::ReplaceSurface(s), None);
+            }
+            _ => {
+                self.add_surface(Some(sid));
+            }
         }
     }
 

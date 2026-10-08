@@ -22,6 +22,8 @@ fn open(kind: &SourceKind) -> Box<dyn MediaSource> {
         SourceKind::Image { path } => Box::new(StillSource::image(path)),
         SourceKind::Color { rgba } => Box::new(StillSource::color(*rgba)),
         SourceKind::TestPattern => Box::new(StillSource::test_pattern()),
+        SourceKind::Camera { device } => Box::new(VideoSource::camera(device)),
+        SourceKind::Stream { uri, muted } => Box::new(VideoSource::stream(uri, *muted)),
     }
 }
 
@@ -42,6 +44,10 @@ impl MediaPool {
                     // Bara flaggor ändrade – starta inte om videon.
                     (SourceKind::Video { path: a, .. }, SourceKind::Video { path: b, looping, muted }) if a == b => {
                         e.media.set_looping(*looping);
+                        e.media.set_muted(*muted);
+                        e.kind = src.kind.clone();
+                    }
+                    (SourceKind::Stream { uri: a, .. }, SourceKind::Stream { uri: b, muted }) if a == b => {
                         e.media.set_muted(*muted);
                         e.kind = src.kind.clone();
                     }
@@ -76,6 +82,11 @@ impl MediaPool {
         for (id, e) in &mut self.items {
             e.media.poll(&mut |frame| renderer.upload(device, queue, egui, *id, &frame));
         }
+    }
+
+    /// Öppnar källan på nytt vid nästa `sync` (t.ex. efter tappad ström).
+    pub fn restart(&mut self, id: SourceId) {
+        self.items.remove(&id);
     }
 
     pub fn get(&self, id: SourceId) -> Option<&dyn MediaSource> {

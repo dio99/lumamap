@@ -69,3 +69,50 @@ pub fn classify(path: &std::path::Path) -> Option<MediaKind> {
         None
     }
 }
+
+/// En kamera som kan väljas som källa.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CameraInfo {
+    pub name: String,
+    /// V4L2-enhet, t.ex. `/dev/video0`.
+    pub device: String,
+}
+
+/// Kameror som GStreamer hittar (via PipeWire eller V4L2). Faller tillbaka på
+/// `/dev/video*` om ingen hittas. Kan ta en stund – anropa inte varje bildruta.
+pub fn list_cameras() -> Vec<CameraInfo> {
+    use gstreamer::prelude::*;
+    let mut out: Vec<CameraInfo> = Vec::new();
+    let monitor = gstreamer::DeviceMonitor::new();
+    monitor.add_filter(Some("Video/Source"), None);
+    if monitor.start().is_ok() {
+        for d in monitor.devices() {
+            let Some(props) = d.properties() else { continue };
+            let path = ["api.v4l2.path", "device.path"]
+                .iter()
+                .find_map(|k| props.get::<String>(*k).ok());
+            if let Some(device) = path {
+                if !out.iter().any(|c| c.device == device) {
+                    out.push(CameraInfo {
+                        name: d.display_name().to_string(),
+                        device,
+                    });
+                }
+            }
+        }
+        monitor.stop();
+    }
+    if out.is_empty() {
+        if let Ok(dir) = std::fs::read_dir("/dev") {
+            let mut devs: Vec<String> = dir
+                .flatten()
+                .map(|e| e.path().to_string_lossy().into_owned())
+                .filter(|p| p.starts_with("/dev/video"))
+                .collect();
+            devs.sort();
+            out = devs.into_iter().map(|d| CameraInfo { name: d.clone(), device: d }).collect();
+        }
+    }
+    out.sort_by(|a, b| a.device.cmp(&b.device));
+    out
+}

@@ -198,6 +198,8 @@ impl LumaApp {
                 SourceKind::Image { .. } => "🖼",
                 SourceKind::Color { .. } => "🎨",
                 SourceKind::TestPattern => "⊞",
+                SourceKind::Camera { .. } => "📷",
+                SourceKind::Stream { .. } => "📡",
             };
             let error = self.media.get(src.id).and_then(|m| m.error()).map(str::to_owned);
             ui.horizontal(|ui| {
@@ -252,6 +254,53 @@ impl LumaApp {
                 self.exec(Command::AddSource { source: s, index }, None);
             }
         });
+        ui.horizontal(|ui| {
+            let r = ui.menu_button("+ Kamera ⏷", |ui| {
+                let cameras = self.cameras.get_or_insert_with(lm_media::list_cameras).clone();
+                if cameras.is_empty() {
+                    ui.label("Ingen kamera hittades");
+                }
+                for c in &cameras {
+                    // Samma namn på flera enheter (t.ex. vanlig kamera och IR) – visa enheten också.
+                    let twin = cameras.iter().filter(|o| o.name == c.name).count() > 1;
+                    let label = if twin { format!("📷 {} – {}", c.name, c.device) } else { format!("📷 {}", c.name) };
+                    if ui.button(label).on_hover_text(&c.device).clicked() {
+                        self.add_source_shown(c.name.clone(), SourceKind::Camera { device: c.device.clone() });
+                    }
+                }
+                ui.separator();
+                if ui.button("⟳ Sök igen").clicked() {
+                    self.cameras = None;
+                }
+            });
+            r.response.on_hover_text("Webbkamera eller annan videoenhet");
+            if ui
+                .small_button("+ Ström…")
+                .on_hover_text("RTSP, SRT, UDP, HTTP eller NDI via GStreamer")
+                .clicked()
+            {
+                self.stream_input = Some(self.stream_input.take().unwrap_or_default());
+            }
+        });
+        if let Some(mut uri) = self.stream_input.take() {
+            let mut keep = true;
+            ui.horizontal(|ui| {
+                let r = ui.add(egui::TextEdit::singleline(&mut uri).hint_text("rtsp://kamera.local/stream").desired_width(150.0));
+                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if (ui.small_button("Lägg till").clicked() || enter) && !uri.trim().is_empty() {
+                    let uri = uri.trim().to_string();
+                    let name = uri.split("://").nth(1).unwrap_or(&uri).split('/').next().unwrap_or("Ström").to_string();
+                    self.add_source_shown(name, SourceKind::Stream { uri, muted: false });
+                    keep = false;
+                }
+                if ui.small_button("✖").clicked() {
+                    keep = false;
+                }
+            });
+            if keep {
+                self.stream_input = Some(uri);
+            }
+        }
 
         ui.add_space(14.0);
         ui.heading("Ytor");
@@ -479,14 +528,19 @@ impl LumaApp {
             }
 
             ui.label("Form");
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 let mut shape = s.shape;
-                for (option, label) in SHAPES {
-                    let same = std::mem::discriminant(&option) == std::mem::discriminant(&shape);
-                    if ui.selectable_label(same, label).on_hover_text(shape_hint(option)).clicked() && !same {
-                        shape = option;
+                let same = |a: &Shape, b: &Shape| std::mem::discriminant(a) == std::mem::discriminant(b);
+                let current = SHAPES.iter().find(|(o, _)| same(o, &shape)).map_or("", |(_, l)| *l);
+                egui::ComboBox::from_id_salt("shape_pick").selected_text(current).width(90.0).show_ui(ui, |ui| {
+                    for (option, label) in SHAPES {
+                        if ui.selectable_label(same(&option, &shape), label).on_hover_text(shape_hint(option)).clicked()
+                            && !same(&option, &shape)
+                        {
+                            shape = option;
+                        }
                     }
-                }
+                });
                 if let Shape::Mesh { cols, rows } = &mut shape {
                     ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(" kol"))
                         .on_hover_text("Antal punkter på bredden");
@@ -660,8 +714,60 @@ impl LumaApp {
         }
     }
 
+    /// Kamera och ström: status, paus, försök igen, ljud.
+    fn live_controls(&mut self, ui: &mut Ui, src: &lm_core::Source) {
+        let (title, muted) = match &src.kind {
+            SourceKind::Camera { .. } => ("Kamera", None),
+            SourceKind::Stream { muted, .. } => ("Ström", Some(*muted)),
+            _ => return,
+        };
+        ui.add_space(14.0);
+        ui.heading(title);
+        match &src.kind {
+            SourceKind::Camera { device } => ui.label(RichText::new(device).color(Color32::from_gray(150))),
+            SourceKind::Stream { uri, .. } => ui.label(RichText::new(uri).color(Color32::from_gray(150))),
+            _ => unreachable!(),
+        };
+        let Some(media) = self.media.get_mut(src.id) else { return };
+        let mut restart = false;
+        match media.error() {
+            Some(e) => {
+                ui.colored_label(Color32::from_rgb(255, 100, 100), e);
+                restart = ui.button("⟳ Försök igen").clicked();
+            }
+            None => {
+                let size = media.size().map_or("väntar på bild…".to_string(), |s| format!("{} × {}", s[0], s[1]));
+                ui.horizontal(|ui| {
+                    let label = if media.is_playing() { "⏸ Paus" } else { "▶ Spela" };
+                    if ui.button(label).clicked() {
+                        if media.is_playing() {
+                            media.pause();
+                        } else {
+                            media.play();
+                        }
+                    }
+                    ui.label(RichText::new(size).color(Color32::from_gray(150)));
+                });
+            }
+        }
+        if restart {
+            self.media.restart(src.id);
+        }
+        if let (Some(mut m), SourceKind::Stream { uri, .. }) = (muted, &src.kind) {
+            if ui.checkbox(&mut m, "🔇 Ljud av").changed() {
+                let mut ns = src.clone();
+                ns.kind = SourceKind::Stream { uri: uri.clone(), muted: m };
+                self.exec(Command::ReplaceSource(ns), None);
+            }
+        }
+    }
+
     fn transport(&mut self, ui: &mut Ui, sid: lm_core::SourceId) {
         let Some(src) = self.project.source(sid).cloned() else { return };
+        if matches!(src.kind, SourceKind::Camera { .. } | SourceKind::Stream { .. }) {
+            self.live_controls(ui, &src);
+            return;
+        }
         let SourceKind::Video { path, looping, muted } = &src.kind else { return };
         ui.add_space(14.0);
         ui.heading("Uppspelning");
