@@ -535,6 +535,16 @@ mod tests {
     }
 
     #[test]
+    fn showcase_project_loads() {
+        let p = Project::from_ron(include_str!("../../../examples/showcase.lmap")).unwrap();
+        assert_eq!(p.surfaces.len(), 5);
+        assert_eq!(p.cues.len(), 4);
+        // Inget repareras bort vid inläsning: alla former och masker är giltiga.
+        assert!(p.surfaces.iter().all(|s| s.dst_pts.len() == s.shape.point_count()));
+        assert!(p.surfaces.iter().any(|s| s.mask.is_some()));
+    }
+
+    #[test]
     fn example_project_loads() {
         let p = Project::from_ron(include_str!("../../../examples/demo.lmap")).unwrap();
         assert_eq!(p.surfaces.len(), 1);

@@ -8,7 +8,7 @@ with edge blending).
 
 The goal: *map a video onto a wall in two minutes without reading a manual.*
 
-![LumaMap editor with a quad and a curved mesh surface](docs/screenshot.jpg)
+![Example show: fire on a triangle, space on a curved pillar, aurora in an ellipse and a masked plasma window over a neon floor](docs/showcase.jpg)
 
 > **Status:** early development (v0.3). Usable for experiments and small
 > shows, but expect rough edges. Developed on Linux Mint (Ubuntu 24.04 base).
@@ -75,6 +75,35 @@ lumamap --play show.lmap
 ```
 
 This opens the project in Show mode with every projector in fullscreen.
+
+## Examples
+
+Open `examples/showcase.lmap` to see every surface type at once: fire on a
+triangle, space on a curved mesh pillar, aurora in an ellipse and a plasma
+"window" with a mask and screen blending, over a neon floor. It has four cues;
+press **Enter** to step through them.
+
+`examples/media/` contains seamless 12-second loops (1280×720) that you are
+free to use in your own shows:
+
+| Video | |
+|---|---|
+| `space.mp4` | Flying through a star field with coloured nebulae |
+| `fire.mp4` | Flames licking upwards |
+| `plasma.mp4` | Slowly flowing rainbow colours |
+| `aurora.mp4` | Northern lights over mountains |
+| `neon.mp4` | Synthwave grid floor under a striped sun |
+
+They are generated from code, so there are no licensing questions and you
+can change them. Edit `examples/media/generate.py` and run it (needs numpy
+and ffmpeg):
+
+```bash
+python3 examples/media/generate.py            # all videos
+python3 examples/media/generate.py fire neon  # just some
+```
+
+![The editor](docs/screenshot.jpg)
 
 ## Keyboard
 
