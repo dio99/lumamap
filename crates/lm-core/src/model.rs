@@ -239,6 +239,54 @@ pub struct Output {
     pub window_pos: Option<[f32; 2]>,
     #[serde(default)]
     pub fullscreen: bool,
+    #[serde(default)]
+    pub edge_blend: EdgeBlend,
+}
+
+/// Mjuk övergång mot kanterna där två projektorer överlappar, så att
+/// överlappet inte blir dubbelt så ljust.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct EdgeBlend {
+    /// Bredd på blandningszonen som andel av bilden (0..0.5): vänster, höger, topp, botten.
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+    pub bottom: f32,
+    /// Projektorns gamma (vanligen 2.2). Rampen görs i linjärt ljus och kodas med den.
+    pub gamma: f32,
+}
+
+pub const EDGE_BLEND_MAX: f32 = 0.5;
+
+impl Default for EdgeBlend {
+    fn default() -> Self {
+        EdgeBlend {
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            bottom: 0.0,
+            gamma: 2.2,
+        }
+    }
+}
+
+impl EdgeBlend {
+    pub fn is_active(&self) -> bool {
+        self.left > 0.0 || self.right > 0.0 || self.top > 0.0 || self.bottom > 0.0
+    }
+
+    /// Hur mycket av bilden som släpps igenom vid (x, y) ∈ [0, 1]², i linjärt ljus.
+    /// Samma beräkning som i `edge_blend.wgsl`.
+    pub fn linear_factor(&self, x: f32, y: f32) -> f32 {
+        fn ramp(d: f32, w: f32) -> f32 {
+            if w <= 0.0 {
+                return 1.0;
+            }
+            let t = (d / w).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        }
+        ramp(x, self.left) * ramp(1.0 - x, self.right) * ramp(y, self.top) * ramp(1.0 - y, self.bottom)
+    }
 }
 
 pub const UNIT_QUAD: [Pt; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
@@ -296,6 +344,7 @@ impl Project {
             resolution: [1920, 1080],
             window_pos: None,
             fullscreen: false,
+            edge_blend: EdgeBlend::default(),
         }
     }
 
@@ -393,6 +442,15 @@ impl Project {
         if self.outputs.is_empty() {
             let out = self.make_output();
             self.outputs.push(out);
+        }
+        for o in &mut self.outputs {
+            let e = &mut o.edge_blend;
+            for w in [&mut e.left, &mut e.right, &mut e.top, &mut e.bottom] {
+                *w = w.clamp(0.0, EDGE_BLEND_MAX);
+            }
+            if !(1.0..=4.0).contains(&e.gamma) {
+                e.gamma = 2.2;
+            }
         }
         let first = self.outputs[0].id;
         let outputs: Vec<OutputId> = self.outputs.iter().map(|o| o.id).collect();
@@ -492,6 +550,22 @@ mod tests {
         let back = Project::from_ron(&p.to_ron().unwrap()).unwrap();
         assert_eq!(back.surfaces[0].shape, Shape::Quad);
         assert_eq!(back.surfaces[0].dst_pts.len(), 4);
+    }
+
+    /// Två projektorer som överlappar: höger kant på den ena och vänster
+    /// kant på den andra ska tillsammans ge full ljusstyrka genom hela överlappet.
+    #[test]
+    fn edge_blend_overlap_sums_to_one() {
+        let overlap = 0.2;
+        let a = EdgeBlend { right: overlap, ..EdgeBlend::default() };
+        let b = EdgeBlend { left: overlap, ..EdgeBlend::default() };
+        for i in 0..=20 {
+            let t = i as f32 / 20.0 * overlap;
+            // Samma punkt på väggen: x = 1 − overlap + t på A, x = t på B.
+            let sum = a.linear_factor(1.0 - overlap + t, 0.5) + b.linear_factor(t, 0.5);
+            assert!((sum - 1.0).abs() < 1e-5, "t={t}: {sum}");
+        }
+        assert_eq!(a.linear_factor(0.5, 0.5), 1.0);
     }
 
     #[test]

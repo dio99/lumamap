@@ -222,6 +222,28 @@ impl LumaApp {
 
     fn paint_overlay(&self, ui: &Ui, rect: Rect, kind: PtKind) {
         let painter = ui.painter_at(rect.expand(8.0));
+        // Kantblandningens zoner, så att man ser var överlappet ska ligga.
+        if let Some(e) = match kind {
+            PtKind::Dst(out) => self.project.output(out).map(|o| o.edge_blend),
+            _ => None,
+        } {
+            let stroke = Stroke::new(1.0, Color32::from_rgb(255, 220, 80));
+            let dash = |a: Pos2, b: Pos2| painter.extend(egui::Shape::dashed_line(&[a, b], stroke, 6.0, 4.0));
+            let (x0, x1) = (rect.min.x + e.left * rect.width(), rect.max.x - e.right * rect.width());
+            let (y0, y1) = (rect.min.y + e.top * rect.height(), rect.max.y - e.bottom * rect.height());
+            if e.left > 0.0 {
+                dash(egui::pos2(x0, rect.min.y), egui::pos2(x0, rect.max.y));
+            }
+            if e.right > 0.0 {
+                dash(egui::pos2(x1, rect.min.y), egui::pos2(x1, rect.max.y));
+            }
+            if e.top > 0.0 {
+                dash(egui::pos2(rect.min.x, y0), egui::pos2(rect.max.x, y0));
+            }
+            if e.bottom > 0.0 {
+                dash(egui::pos2(rect.min.x, y1), egui::pos2(rect.max.x, y1));
+            }
+        }
         for id in self.canvas_surfaces(kind) {
             let Some(s) = self.project.surface(id) else { continue };
             let pts: Vec<Pos2> = self.points(id, kind).unwrap_or_default().iter().map(|p| to_screen(rect, *p)).collect();

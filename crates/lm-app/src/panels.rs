@@ -4,7 +4,7 @@
 use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
-use lm_core::{BlendMode, Command, Mask, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
+use lm_core::{BlendMode, Command, Mask, EDGE_BLEND_MAX, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
 use std::time::Duration;
 
 const FILES: &[&str] = &[
@@ -822,8 +822,41 @@ impl LumaApp {
         let before = o.clone();
         ui.heading("Utgång");
         let r = ui.add(egui::TextEdit::singleline(&mut o.name).font(egui::TextStyle::Heading));
-        let gesture = (r.changed() || r.gained_focus()).then(|| self.field_gesture(&r));
+        let mut gesture = (r.changed() || r.gained_focus()).then(|| self.field_gesture(&r));
         ui.label(RichText::new(format!("{} × {} px", o.resolution[0], o.resolution[1])).color(Color32::from_gray(140)));
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Kantblandning").strong())
+            .on_hover_text("Där två projektorer överlappar tonas bilden ut mot kanten så att överlappet inte blir dubbelt så ljust.");
+        egui::Grid::new("edge_blend").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+            let e = &mut o.edge_blend;
+            for (label, w) in [("Vänster", &mut e.left), ("Höger", &mut e.right), ("Topp", &mut e.top), ("Botten", &mut e.bottom)] {
+                ui.label(label);
+                let r = ui.add(
+                    egui::Slider::new(w, 0.0..=EDGE_BLEND_MAX)
+                        .custom_formatter(|v, _| format!("{:.0} %", v * 100.0))
+                        .custom_parser(|t| t.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v| v / 100.0)),
+                );
+                if r.changed() {
+                    gesture = Some(self.field_gesture(&r));
+                }
+                ui.end_row();
+            }
+            ui.label("Gamma");
+            let r = ui
+                .add(egui::Slider::new(&mut e.gamma, 1.0..=3.0).fixed_decimals(1))
+                .on_hover_text("Projektorns gamma, oftast 2.2. Justera om överlappet ser ljusare eller mörkare ut.");
+            if r.changed() {
+                gesture = Some(self.field_gesture(&r));
+            }
+            ui.end_row();
+        });
+        if o.edge_blend.is_active() {
+            ui.label(
+                RichText::new("Bredden ska vara lika stor som överlappet. Slå på ⊞ Testbild för att rikta in.")
+                    .color(Color32::from_gray(140)),
+            );
+        }
         ui.add_space(6.0);
         let mut remove = false;
         ui.horizontal(|ui| {

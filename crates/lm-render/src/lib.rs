@@ -12,6 +12,8 @@ use egui::TextureId;
 
 pub use egui_wgpu;
 
+mod edge;
+
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
 const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 * 16;
@@ -111,6 +113,7 @@ pub struct Renderer {
     sources: HashMap<SourceId, GpuTexture>,
     test: GpuTexture,
     outputs: HashMap<OutputId, GpuOutput>,
+    edge: edge::EdgePass,
 }
 
 impl Renderer {
@@ -233,6 +236,7 @@ impl Renderer {
             sources: HashMap::new(),
             test,
             outputs: HashMap::new(),
+            edge: edge::EdgePass::new(device, FORMAT, MSAA),
         }
     }
 
@@ -345,6 +349,13 @@ impl Renderer {
         }
         queue.write_buffer(&self.uniform_buf, 0, &data);
 
+        // Kantblandning ritas även över testbilden (bra när projektorerna riktas in).
+        let edge_offsets = if opts.blackout {
+            HashMap::new()
+        } else {
+            self.edge.prepare(device, queue, project.outputs.iter().map(|o| (o.id, o.edge_blend)))
+        };
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("lumamap") });
         for out in &project.outputs {
             let target = &self.outputs[&out.id];
@@ -377,6 +388,9 @@ impl Renderer {
                 pass.set_bind_group(0, &self.uniform_bg, &[(i as u64 * self.uniform_stride) as u32]);
                 pass.set_bind_group(1, bg, &[]);
                 pass.draw(d.vertices.clone(), 0..1);
+            }
+            if let Some(offset) = edge_offsets.get(&out.id) {
+                self.edge.draw(&mut pass, *offset);
             }
         }
         queue.submit([encoder.finish()]);
@@ -676,14 +690,18 @@ fn write_frame(queue: &wgpu::Queue, texture: &wgpu::Texture, frame: &FrameView) 
 mod tests {
     use super::*;
 
-    /// Shadern valideras annars först när appen startar.
+    /// Shadrarna valideras annars först när appen startar.
     #[test]
-    fn shader_is_valid() {
-        let module = naga::front::wgsl::parse_str(include_str!("../../../shaders/surface.wgsl"))
-            .unwrap_or_else(|e| panic!("{}", e.emit_to_string("surface.wgsl")));
-        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default())
-            .validate(&module)
-            .unwrap();
+    fn shaders_are_valid() {
+        for (name, src) in [
+            ("surface.wgsl", include_str!("../../../shaders/surface.wgsl")),
+            ("edge_blend.wgsl", include_str!("../../../shaders/edge_blend.wgsl")),
+        ] {
+            let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(name)));
+            naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default())
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        }
     }
 
     /// `pipelines` indexeras med `blend as usize`.
