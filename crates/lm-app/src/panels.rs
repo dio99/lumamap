@@ -46,7 +46,7 @@ impl LumaApp {
                     self.add_files(files, None);
                 }
             }
-            ui.menu_button("⬜ Ny yta ▾", |ui| {
+            ui.menu_button("⬜ Ny yta ⏷", |ui| {
                 for (shape, label) in SHAPES {
                     if ui.button(label).clicked() {
                         let src = self.selected_source;
@@ -58,14 +58,17 @@ impl LumaApp {
             .on_hover_text("Lägg till en yta");
             ui.separator();
             if ui.add_enabled(self.history.can_undo(), egui::Button::new("⮪")).on_hover_text("Ångra (Ctrl+Z)").clicked() {
-                self.history.undo(&mut self.project);
+                self.undo();
             }
             if ui.add_enabled(self.history.can_redo(), egui::Button::new("⮫")).on_hover_text("Gör om (Ctrl+Shift+Z)").clicked() {
-                self.history.redo(&mut self.project);
+                self.redo();
             }
             ui.separator();
             ui.toggle_value(&mut self.opts.output_test, "⊞ Testbild").on_hover_text("Testbild på hela projektorn (T)");
             ui.toggle_value(&mut self.opts.blackout, "⏹ Svart").on_hover_text("Svart på projektorn (B)");
+            ui.label("Master");
+            ui.add(egui::Slider::new(&mut self.opts.master, 0.0..=1.0).show_value(false))
+                .on_hover_text("Ljusstyrka för alla ytor (sparas inte)");
             ui.separator();
             self.output_picker(ui);
             let out = self.current_output;
@@ -91,6 +94,10 @@ impl LumaApp {
                     }
                     if ui.button("Spara som…   Ctrl+Shift+S").clicked() {
                         self.save(true);
+                    }
+                    ui.separator();
+                    if ui.button("OSC-fjärrstyrning…").clicked() {
+                        self.osc_window_open = true;
                     }
                 });
                 if ui.button("💾").on_hover_text("Spara (Ctrl+S)").clicked() {
@@ -158,6 +165,18 @@ impl LumaApp {
                 ),
             };
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (text, color) = match (&self.osc, &self.osc_error) {
+                    (Some(s), _) => (format!("OSC :{}", s.port()), Color32::from_rgb(120, 200, 120)),
+                    (None, Some(_)) => ("OSC ✖".to_string(), Color32::from_rgb(255, 100, 100)),
+                    _ => ("OSC av".to_string(), Color32::from_gray(120)),
+                };
+                // Blinkar till när ett meddelande kommer in.
+                let fresh = self.osc_last.as_ref().is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300));
+                let color = if fresh { ACCENT } else { color };
+                if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text("OSC-inställningar").clicked() {
+                    self.osc_window_open = true;
+                }
+                ui.separator();
                 if let Some(o) = self.project.output(self.current_output) {
                     ui.label(RichText::new(format!("{}: {} × {}", o.name, o.resolution[0], o.resolution[1])).color(Color32::from_gray(140)));
                 }
@@ -270,6 +289,147 @@ impl LumaApp {
         }
         if let Some(c) = action {
             self.exec(c, None);
+        }
+
+        ui.add_space(14.0);
+        self.cue_list(ui);
+    }
+
+    fn cue_list(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Cues");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let go = egui::Button::new(RichText::new("GO ▶").strong()).fill(Color32::from_rgb(40, 110, 50));
+                if ui.add_enabled(!self.project.cues.is_empty(), go).on_hover_text("Nästa cue (Enter)").clicked() {
+                    self.go_next_cue(1);
+                }
+            });
+        });
+        if self.project.cues.is_empty() {
+            ui.label(RichText::new("Ställ in ytorna och klicka + Spara cue.").color(Color32::from_gray(140)));
+        }
+        let (mut go, mut remove) = (None, None);
+        for (i, c) in self.project.cues.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let current = self.current_cue == Some(c.id);
+                let mut text = RichText::new(format!("{}. {}", i + 1, c.name));
+                if current {
+                    text = text.color(Color32::from_rgb(120, 220, 120)).strong();
+                }
+                let r = ui
+                    .selectable_label(self.selected_cue == Some(c.id), text)
+                    .on_hover_text(format!("Övergång {:.1} s  •  dubbelklicka för GO", c.fade));
+                if r.clicked() {
+                    self.selected_cue = Some(c.id);
+                }
+                if r.double_clicked() {
+                    go = Some(c.id);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("🗑").on_hover_text("Ta bort cue").clicked() {
+                        remove = Some(c.id);
+                    }
+                    if ui.small_button("▶").on_hover_text("Gå till cuen").clicked() {
+                        go = Some(c.id);
+                    }
+                });
+            });
+        }
+        if let Some(id) = go {
+            self.go_cue(id);
+        }
+        if let Some(id) = remove {
+            self.exec(Command::RemoveCue(id), None);
+        }
+        if ui
+            .button("+ Spara cue")
+            .on_hover_text("Sparar vilka ytor som syns, deras opacitet och media")
+            .clicked()
+        {
+            let cue = self.project.capture_cue(format!("Cue {}", self.project.cues.len() + 1), 1.0);
+            let id = cue.id;
+            // Efter vald cue, annars sist.
+            let index = self
+                .selected_cue
+                .and_then(|s| self.project.cues.iter().position(|c| c.id == s))
+                .map_or(self.project.cues.len(), |i| i + 1);
+            self.exec(Command::AddCue { cue, index }, None);
+            self.selected_cue = Some(id);
+            self.current_cue = Some(id);
+        }
+
+        // Vald cue
+        let Some(mut c) = self.selected_cue.and_then(|id| self.project.cue(id)).cloned() else { return };
+        let before = c.clone();
+        let mut gesture = None;
+        ui.add_space(6.0);
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            let r = ui.text_edit_singleline(&mut c.name);
+            if r.changed() || r.gained_focus() {
+                gesture = Some(self.field_gesture(&r));
+            }
+            ui.horizontal(|ui| {
+                ui.label("Övergång");
+                let r = ui.add(egui::DragValue::new(&mut c.fade).range(0.0..=60.0).speed(0.05).suffix(" s"));
+                if r.changed() {
+                    gesture = Some(self.field_gesture(&r));
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .button("⟳ Uppdatera")
+                    .on_hover_text("Spara nuvarande läge i den här cuen")
+                    .clicked()
+                {
+                    c.surfaces = self.project.capture_cue("", 0.0).surfaces;
+                }
+                let index = self.project.cues.iter().position(|x| x.id == c.id).unwrap_or(0);
+                let n = self.project.cues.len();
+                if ui.add_enabled(index > 0, egui::Button::new("⏶").small()).on_hover_text("Flytta upp").clicked() {
+                    self.exec(Command::MoveCueTo { id: c.id, index: index - 1 }, None);
+                }
+                if ui.add_enabled(index + 1 < n, egui::Button::new("⏷").small()).on_hover_text("Flytta ner").clicked() {
+                    self.exec(Command::MoveCueTo { id: c.id, index: index + 1 }, None);
+                }
+            });
+        });
+        if c != before {
+            self.exec(Command::ReplaceCue(c), gesture);
+        }
+    }
+
+    pub fn osc_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.osc_window_open;
+        let mut settings = self.project.settings.clone();
+        egui::Window::new("OSC-fjärrstyrning").open(&mut open).resizable(false).show(ctx, |ui| {
+            ui.checkbox(&mut settings.osc_enabled, "Ta emot OSC");
+            ui.horizontal(|ui| {
+                ui.label("UDP-port");
+                ui.add(egui::DragValue::new(&mut settings.osc_port).range(1024..=65535));
+            });
+            match (&self.osc, &self.osc_error) {
+                (Some(s), _) => ui.colored_label(Color32::from_rgb(120, 220, 120), format!("Lyssnar på port {}", s.port())),
+                (None, Some(e)) => ui.colored_label(Color32::from_rgb(255, 100, 100), e),
+                _ => ui.label("Avstängd"),
+            };
+            if let Some((m, t)) = &self.osc_last {
+                ui.label(RichText::new(format!("Senast ({:.0} s sedan): {m}", t.elapsed().as_secs_f32())).color(Color32::from_gray(150)));
+            }
+            ui.add_space(8.0);
+            ui.label(RichText::new("Adresser (mellanslag i namn skrivs som _):").strong());
+            ui.label(
+                RichText::new(
+                    "/lumamap/cue/<nr>/go\n/lumamap/cue/next\n/lumamap/cue/prev\n\
+                     /lumamap/surface/<namn>/opacity  f\n/lumamap/surface/<namn>/visible  i\n\
+                     /lumamap/source/<namn>/play\n/lumamap/source/<namn>/pause\n/lumamap/source/<namn>/seek  f\n\
+                     /lumamap/master/opacity  f\n/lumamap/blackout  i",
+                )
+                .monospace(),
+            );
+        });
+        self.osc_window_open = open;
+        if settings != self.project.settings {
+            self.exec(Command::ReplaceSettings(settings), None);
         }
     }
 

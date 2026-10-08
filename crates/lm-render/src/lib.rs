@@ -74,7 +74,6 @@ struct GpuOutput {
 }
 
 /// Vad som ska visas utöver projektet självt.
-#[derive(Default)]
 pub struct RenderOptions {
     /// Ytor som tillfälligt visar testbild i stället för sin källa.
     pub test_surfaces: HashSet<SurfaceId>,
@@ -82,6 +81,19 @@ pub struct RenderOptions {
     pub output_test: bool,
     /// Svart utgång (blackout).
     pub blackout: bool,
+    /// Master-nivå för alla ytor (0..1).
+    pub master: f32,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        RenderOptions {
+            test_surfaces: HashSet::new(),
+            output_test: false,
+            blackout: false,
+            master: 1.0,
+        }
+    }
 }
 
 pub struct Renderer {
@@ -305,6 +317,7 @@ impl Renderer {
                 }
                 if let Some(mut geo) = surface_geometry(s, test) {
                     apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution);
+                    geo.0.params[0] *= opts.master.clamp(0.0, 1.0);
                     push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }

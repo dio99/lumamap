@@ -57,6 +57,18 @@ pub struct LumaApp {
     autosave_at: Instant,
     autosave_revision: u64,
     pub restore_offer: Option<PathBuf>,
+
+    // Show
+    pub current_cue: Option<lm_core::CueId>,
+    pub selected_cue: Option<lm_core::CueId>,
+    pub fade: Option<crate::show::Fade>,
+    pub osc: Option<lm_control::OscServer>,
+    pub osc_error: Option<String>,
+    /// Porten som senast försöktes (så att en upptagen port inte provas varje bildruta).
+    pub osc_port_tried: Option<u16>,
+    pub osc_last: Option<(String, Instant)>,
+    pub osc_gestures: HashMap<SurfaceId, (u64, Instant)>,
+    pub osc_window_open: bool,
     pub editor_canvas: Option<egui::Rect>,
 }
 
@@ -92,6 +104,15 @@ impl LumaApp {
             autosave_at: Instant::now(),
             autosave_revision: 0,
             restore_offer: None,
+            current_cue: None,
+            selected_cue: None,
+            fade: None,
+            osc: None,
+            osc_error: None,
+            osc_port_tried: None,
+            osc_last: None,
+            osc_gestures: HashMap::new(),
+            osc_window_open: false,
             editor_canvas: None,
         };
 
@@ -117,6 +138,17 @@ impl LumaApp {
 
     pub fn exec(&mut self, cmd: Command, gesture: Option<u64>) {
         self.history.exec(&mut self.project, cmd, gesture);
+    }
+
+    /// Ångra. Avbryter en pågående cue-övergång så att den inte skriver över.
+    pub fn undo(&mut self) {
+        self.fade = None;
+        self.history.undo(&mut self.project);
+    }
+
+    pub fn redo(&mut self) {
+        self.fade = None;
+        self.history.redo(&mut self.project);
     }
 
     pub fn new_gesture(&mut self) -> u64 {
@@ -300,6 +332,9 @@ impl LumaApp {
         self.selected_source = None;
         self.drag = None;
         self.mask_edit = false;
+        self.current_cue = None;
+        self.selected_cue = None;
+        self.fade = None;
         self.opts = RenderOptions::default();
     }
 
@@ -394,10 +429,10 @@ impl LumaApp {
             )
         });
         if undo && !typing {
-            self.history.undo(&mut self.project);
+            self.undo();
         }
         if (redo || redo2) && !typing {
-            self.history.redo(&mut self.project);
+            self.redo();
         }
         if save_as {
             self.save(true);
@@ -439,6 +474,9 @@ impl LumaApp {
                 i.key_pressed(Key::C),
             )
         });
+        if ui.input(|i| i.key_pressed(Key::Enter)) {
+            self.go_next_cue(1);
+        }
         if tab {
             self.show_mode = !self.show_mode;
         }
@@ -711,9 +749,12 @@ impl eframe::App for LumaApp {
             self.add_files(dropped, target);
         }
 
+        self.poll_osc();
+        self.tick_fade();
         self.shortcuts(ui);
         self.editor_ui(ui);
         self.output_windows(&ctx);
+        self.osc_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 

@@ -13,6 +13,7 @@ lm-core.workspace = true
 lm-geom.workspace = true
 lm-media.workspace = true
 lm-render.workspace = true
+lm-control.workspace = true
 eframe.workspace = true
 rfd.workspace = true
 log.workspace = true

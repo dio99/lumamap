@@ -12,6 +12,8 @@ lm-core = { path = "crates/lm-core" }
 lm-geom = { path = "crates/lm-geom" }
 lm-media = { path = "crates/lm-media" }
 lm-render = { path = "crates/lm-render" }
+lm-control = { path = "crates/lm-control" }
+rosc = "0.11"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }

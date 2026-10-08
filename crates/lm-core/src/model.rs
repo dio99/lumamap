@@ -17,6 +17,9 @@ pub struct SurfaceId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OutputId(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CueId(pub u32);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     pub version: u32,
@@ -24,7 +27,54 @@ pub struct Project {
     /// Ordning = lagerordning (första ritas längst bak).
     pub surfaces: Vec<Surface>,
     pub outputs: Vec<Output>,
+    /// Sparade tillstånd att växla mellan under en show.
+    #[serde(default)]
+    pub cues: Vec<Cue>,
+    #[serde(default)]
+    pub settings: Settings,
     next_id: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Settings {
+    /// Ta emot OSC-fjärrstyrning.
+    #[serde(default = "yes")]
+    pub osc_enabled: bool,
+    #[serde(default = "default_osc_port")]
+    pub osc_port: u16,
+}
+
+fn default_osc_port() -> u16 {
+    12345
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            osc_enabled: true,
+            osc_port: default_osc_port(),
+        }
+    }
+}
+
+/// Ett sparat tillstånd: vilka ytor som syns, hur starkt och med vilket media.
+/// Ytor som inte finns med i cuen lämnas orörda.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Cue {
+    pub id: CueId,
+    pub name: String,
+    /// Övergångstid i sekunder.
+    #[serde(default)]
+    pub fade: f32,
+    pub surfaces: Vec<CueSurface>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CueSurface {
+    pub surface: SurfaceId,
+    pub visible: bool,
+    pub opacity: f32,
+    pub source: Option<SourceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -196,6 +246,8 @@ impl Project {
             sources: Vec::new(),
             surfaces: Vec::new(),
             outputs: Vec::new(),
+            cues: Vec::new(),
+            settings: Settings::default(),
             next_id: 1,
         };
         let out = p.make_output();
@@ -204,6 +256,29 @@ impl Project {
     }
 
     /// Skapar en ny utgång (läggs inte till – använd `Command::AddOutput`).
+    /// Sparar nuvarande tillstånd som en ny cue (läggs inte till – använd `Command::AddCue`).
+    pub fn capture_cue(&mut self, name: impl Into<String>, fade: f32) -> Cue {
+        Cue {
+            id: CueId(self.alloc_id()),
+            name: name.into(),
+            fade,
+            surfaces: self
+                .surfaces
+                .iter()
+                .map(|s| CueSurface {
+                    surface: s.id,
+                    visible: s.visible,
+                    opacity: s.opacity,
+                    source: s.source,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn cue(&self, id: CueId) -> Option<&Cue> {
+        self.cues.iter().find(|c| c.id == id)
+    }
+
     pub fn make_output(&mut self) -> Output {
         Output {
             id: OutputId(self.alloc_id()),
@@ -299,6 +374,7 @@ impl Project {
             .map(|s| s.id.0)
             .chain(self.surfaces.iter().map(|s| s.id.0))
             .chain(self.outputs.iter().map(|o| o.id.0))
+            .chain(self.cues.iter().map(|c| c.id.0))
             .max()
             .unwrap_or(0);
         self.next_id = self.next_id.max(max + 1);

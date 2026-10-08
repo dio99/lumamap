@@ -9,6 +9,7 @@ mod app;
 mod canvas;
 mod panels;
 mod pool;
+mod show;
 
 use app::{LumaApp, Startup};
 use eframe::egui;

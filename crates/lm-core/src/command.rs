@@ -17,6 +17,11 @@ pub enum Command {
     /// Tar bort utgången och alla ytor på den.
     RemoveOutput(OutputId),
     ReplaceOutput(Output),
+    AddCue { cue: Cue, index: usize },
+    RemoveCue(CueId),
+    ReplaceCue(Cue),
+    MoveCueTo { id: CueId, index: usize },
+    ReplaceSettings(Settings),
     /// Flera kommandon som ett ångra-steg.
     Batch(Vec<Command>),
 }
@@ -96,6 +101,33 @@ impl Command {
                 let slot = p.outputs.iter_mut().find(|o| o.id == new.id)?;
                 let old = std::mem::replace(slot, new);
                 Some(Command::ReplaceOutput(old))
+            }
+            Command::AddCue { cue, index } => {
+                let id = cue.id;
+                let index = index.min(p.cues.len());
+                p.cues.insert(index, cue);
+                Some(Command::RemoveCue(id))
+            }
+            Command::RemoveCue(id) => {
+                let index = p.cues.iter().position(|c| c.id == id)?;
+                let cue = p.cues.remove(index);
+                Some(Command::AddCue { cue, index })
+            }
+            Command::ReplaceCue(new) => {
+                let slot = p.cues.iter_mut().find(|c| c.id == new.id)?;
+                let old = std::mem::replace(slot, new);
+                Some(Command::ReplaceCue(old))
+            }
+            Command::MoveCueTo { id, index } => {
+                let from = p.cues.iter().position(|c| c.id == id)?;
+                let c = p.cues.remove(from);
+                let index = index.min(p.cues.len());
+                p.cues.insert(index, c);
+                Some(Command::MoveCueTo { id, index: from })
+            }
+            Command::ReplaceSettings(new) => {
+                let old = std::mem::replace(&mut p.settings, new);
+                Some(Command::ReplaceSettings(old))
             }
             Command::Batch(cmds) => {
                 let mut inv: Vec<Command> = cmds.into_iter().filter_map(|c| c.apply(p)).collect();
@@ -251,6 +283,24 @@ mod tests {
         assert!(p.surfaces.iter().all(|s| s.output == o1_id));
         h.undo(&mut p);
         assert_eq!(p, before);
+    }
+
+    #[test]
+    fn cue_add_remove_undo() {
+        let mut p = Project::new();
+        let mut h = History::default();
+        let s = p.make_quad(None, p.outputs[0].id);
+        h.exec(&mut p, Command::AddSurface { surface: s, index: 0 }, None);
+        let cue = p.capture_cue("Intro", 2.0);
+        let id = cue.id;
+        h.exec(&mut p, Command::AddCue { cue, index: 0 }, None);
+        assert_eq!(p.cues[0].surfaces.len(), 1);
+        h.exec(&mut p, Command::RemoveCue(id), None);
+        assert!(p.cues.is_empty());
+        h.undo(&mut p);
+        assert_eq!(p.cue(id).map(|c| c.name.as_str()), Some("Intro"));
+        let back = Project::from_ron(&p.to_ron().unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]
