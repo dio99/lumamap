@@ -100,7 +100,7 @@ pub struct OscServer {
 
 impl OscServer {
     pub fn start(port: u16) -> Result<Self, String> {
-        let socket = UdpSocket::bind(("0.0.0.0", port)).map_err(|e| format!("OSC-porten {port} gick inte att öppna: {e}"))?;
+        let socket = UdpSocket::bind(("0.0.0.0", port)).map_err(|e| format!("{} {port}: {e}", lm_core::i18n::t("Kunde inte öppna OSC-porten", "Could not open OSC port")))?;
         socket
             .set_read_timeout(Some(Duration::from_millis(200)))
             .map_err(|e| e.to_string())?;
@@ -121,7 +121,7 @@ impl OscServer {
                                 }
                             }
                         }
-                        Err(e) => log::warn!("Ogiltigt OSC-paket från {from}: {e:?}"),
+                        Err(e) => log::warn!("{} {from}: {e:?}", lm_core::i18n::t("Ogiltigt OSC-paket från", "Invalid OSC packet from")),
                     }
                 }
             })

@@ -2,6 +2,7 @@
 //! Allt som ändrar projektet går via samma kommandon som musen.
 
 use crate::app::LumaApp;
+use lm_core::i18n::t;
 use lm_control::{name_matches, ControlMsg, OscServer};
 use lm_core::{cue_start, fade_frame, Command, CueId, FadeStep, SourceId, SurfaceId};
 use std::time::{Duration, Instant};
@@ -124,7 +125,7 @@ impl LumaApp {
     fn handle_control(&mut self, msg: ControlMsg) {
         match msg {
             ControlMsg::SourcePlay(n) | ControlMsg::SourcePause(n) | ControlMsg::SourceSeek(n, _) if self.find_source(&n).is_none() => {
-                log::warn!("OSC: okänd källa {n}");
+                log::warn!("OSC: {} {n}", t("okänd källa", "unknown source"));
             }
             ControlMsg::SourcePlay(n) => {
                 let id = self.find_source(&n);
@@ -148,7 +149,7 @@ impl LumaApp {
             ControlMsg::SurfaceVisible(n, v) => self.osc_surface(&n, |s| s.visible = v),
             ControlMsg::CueGo(key) => match self.find_cue(&key) {
                 Some(id) => self.go_cue(id),
-                None => log::warn!("OSC: okänd cue {key}"),
+                None => log::warn!("OSC: {} {key}", t("okänd cue", "unknown cue")),
             },
             ControlMsg::CueNext => self.go_next_cue(1),
             ControlMsg::CuePrev => self.go_next_cue(-1),
@@ -160,7 +161,7 @@ impl LumaApp {
     /// Ändrar en yta från OSC. Snabba fadrar på samma yta blir ett ångra-steg.
     fn osc_surface(&mut self, key: &str, f: impl FnOnce(&mut lm_core::Surface)) {
         let Some(id) = self.find_surface(key) else {
-            log::warn!("OSC: okänd yta {key}");
+            log::warn!("OSC: {} {key}", t("okänd yta", "unknown surface"));
             return;
         };
         let Some(mut s) = self.project.surface(id).cloned() else { return };

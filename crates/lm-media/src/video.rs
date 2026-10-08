@@ -4,6 +4,7 @@
 //! Hårdvaruavkodning (VA-API) väljs automatiskt av GStreamer.
 
 use crate::{FrameView, MediaSource};
+use lm_core::i18n::t;
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
@@ -82,7 +83,7 @@ impl VideoSource {
     fn start(pipeline: gst::Element, latest: Slot, looping: bool, live: bool, what: &str) -> Result<Self, String> {
         pipeline
             .set_state(gst::State::Playing)
-            .map_err(|_| format!("Kunde inte starta {what}"))?;
+            .map_err(|_| format!("{} {what}", t("Kunde inte starta", "Could not start")))?;
         Ok(VideoSource {
             pipeline,
             latest,
@@ -100,12 +101,12 @@ impl VideoSource {
             .property("video-sink", sink)
             .property("mute", muted)
             .build()
-            .map_err(|e| format!("playbin saknas (installera gstreamer1.0-plugins-base): {e}"))
+            .map_err(|e| format!("{}: {e}", t("playbin saknas (installera gstreamer1.0-plugins-base)", "playbin is missing (install gstreamer1.0-plugins-base)")))
     }
 
     fn try_file(path: &Path, looping: bool, muted: bool) -> Result<Self, String> {
         if !path.exists() {
-            return Err(format!("Filen finns inte: {}", path.display()));
+            return Err(format!("{}: {}", t("Filen finns inte", "File not found"), path.display()));
         }
         let abs = path.canonicalize().map_err(|e| e.to_string())?;
         let uri = gst::glib::filename_to_uri(&abs, None).map_err(|e| e.to_string())?;
@@ -117,10 +118,14 @@ impl VideoSource {
 
     fn try_stream(uri: &str, muted: bool) -> Result<Self, String> {
         let Some((scheme, _)) = uri.split_once("://") else {
-            return Err(format!("Ogiltig adress (saknar t.ex. rtsp://): {uri}"));
+            return Err(format!("{}: {uri}", t("Ogiltig adress (saknar t.ex. rtsp://)", "Invalid address (missing e.g. rtsp://)")));
         };
         if gst::Element::make_from_uri(gst::URIType::Src, uri, None).is_err() {
-            return Err(format!("Ingen GStreamer-plugin kan läsa {scheme}:// (installera gstreamer1.0-plugins-bad/-good)"));
+            return Err(format!(
+                "{} {scheme}:// ({})",
+                t("Ingen GStreamer-plugin kan läsa", "No GStreamer plugin can read"),
+                t("installera gstreamer1.0-plugins-bad/-good", "install gstreamer1.0-plugins-bad/-good")
+            ));
         }
         let sink = gst_app::AppSink::builder().build();
         // Ingen synk: med synk räknas bildrutorna som sena och avkodaren
@@ -132,21 +137,21 @@ impl VideoSource {
 
     fn try_camera(device: &str) -> Result<Self, String> {
         if !Path::new(device).exists() {
-            return Err(format!("Kameran finns inte: {device}"));
+            return Err(format!("{}: {device}", t("Kameran finns inte", "Camera not found")));
         }
         let desc = format!(
             "v4l2src device=\"{}\" ! capsfilter caps=\"{CAMERA_CAPS}\" ! decodebin ! videoconvert ! appsink name=sink",
             device.replace('"', "")
         );
-        let pipeline = gst::parse::launch(&desc).map_err(|e| format!("Kunde inte öppna kameran {device}: {e}"))?;
+        let pipeline = gst::parse::launch(&desc).map_err(|e| format!("{} {device}: {e}", t("Kunde inte öppna kameran", "Could not open camera")))?;
         let bin = pipeline.clone().downcast::<gst::Bin>().map_err(|_| "Ingen pipeline".to_string())?;
         let sink = bin
             .by_name("sink")
             .and_then(|e| e.downcast::<gst_app::AppSink>().ok())
-            .ok_or("appsink saknas")?;
+            .ok_or(t("appsink saknas", "appsink is missing"))?;
         // Ingen synk: visa varje bildruta så fort den kommer (lägst fördröjning).
         let latest = Self::configure_sink(&sink, false);
-        Self::start(pipeline, latest, false, true, &format!("kameran {device}"))
+        Self::start(pipeline, latest, false, true, &format!("{} {device}", t("kameran", "camera")))
     }
 
     fn handle_bus(&mut self) {
@@ -154,7 +159,7 @@ impl VideoSource {
         while let Some(msg) = bus.pop() {
             match msg.view() {
                 gst::MessageView::Eos(_) if self.live => {
-                    self.error = Some("Strömmen tog slut".into());
+                    self.error = Some(t("Strömmen tog slut", "The stream ended").into());
                     self.playing = false;
                 }
                 gst::MessageView::Eos(_) => {

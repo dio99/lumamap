@@ -1,6 +1,7 @@
 //! Stillbilder: bildfiler (laddas i bakgrunden), enfärgade ytor och testbild.
 
 use crate::{FrameView, MediaSource};
+use lm_core::i18n::t;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -67,7 +68,7 @@ impl StillSource {
 }
 
 fn load_image(path: &Path) -> Result<Pixels, String> {
-    let img = image::open(path).map_err(|e| format!("Kunde inte öppna {}: {e}", path.display()))?;
+    let img = image::open(path).map_err(|e| format!("{} {}: {e}", t("Kunde inte öppna", "Could not open"), path.display()))?;
     let img = if img.width() > MAX_SIDE || img.height() > MAX_SIDE {
         img.resize(MAX_SIDE, MAX_SIDE, image::imageops::FilterType::Triangle)
     } else {

@@ -3,6 +3,7 @@
 
 use crate::app::LumaApp;
 use eframe::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Stroke, Ui};
+use lm_core::i18n::t;
 use lm_core::{Command, OutputId, Pt, Shape, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS};
 
 /// Vilka punkter vyn redigerar.
@@ -298,7 +299,7 @@ impl LumaApp {
 
             if matches!(kind, PtKind::Dst(_)) {
                 let c = lm_geom::centroid(self.points(id, kind).unwrap_or_default());
-                let label = if s.source.is_none() { format!("{}\n(ingen media)", s.name) } else { s.name.clone() };
+                let label = if s.source.is_none() { format!("{}\n({})", s.name, t("ingen media", "no media")) } else { s.name.clone() };
                 painter.text(
                     to_screen(rect, c),
                     egui::Align2::CENTER_CENTER,

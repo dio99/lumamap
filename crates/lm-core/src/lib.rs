@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod cue;
+pub mod i18n;
 pub mod model;
 
 pub use command::{Command, History};

@@ -3,6 +3,7 @@
 use crate::canvas::{Drag, PtKind};
 use crate::pool::MediaPool;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, ViewportCommand, ViewportId};
+use lm_core::i18n::{self, t, Language};
 use lm_core::{Command, History, OutputId, Project, SourceKind, SurfaceId};
 use lm_render::RenderOptions;
 use std::collections::{HashMap, HashSet};
@@ -78,7 +79,7 @@ pub struct LumaApp {
 
 impl LumaApp {
     pub fn new(cc: &eframe::CreationContext, startup: Startup) -> Result<Self, String> {
-        let rs = cc.wgpu_render_state.as_ref().ok_or("wgpu saknas")?;
+        let rs = cc.wgpu_render_state.as_ref().ok_or(t("wgpu saknas", "wgpu is missing"))?;
         let renderer = lm_render::Renderer::new(&rs.device, &rs.queue, &mut rs.renderer.write());
         cc.egui_ctx.set_theme(egui::Theme::Dark);
 
@@ -237,7 +238,7 @@ impl LumaApp {
                     return;
                 }
                 None => {
-                    self.notify(format!("Okänt filformat: {}", path.display()));
+                    self.notify(format!("{}: {}", t("Okänt filformat", "Unknown file format"), path.display()));
                     continue;
                 }
             };
@@ -322,13 +323,13 @@ impl LumaApp {
         match action {
             Pending::New => {
                 self.replace_project(Project::new(), None);
-                self.notify("Nytt projekt");
+                self.notify(t("Nytt projekt", "New project"));
             }
             Pending::Open(path) => {
                 let path = path.or_else(|| {
                     rfd::FileDialog::new()
-                        .set_title("Öppna projekt")
-                        .add_filter("LumaMap-projekt", &["lmap"])
+                        .set_title(t("Öppna projekt", "Open project"))
+                        .add_filter(t("LumaMap-projekt", "LumaMap project"), &["lmap"])
                         .pick_file()
                 });
                 if let Some(p) = path {
@@ -378,9 +379,9 @@ impl LumaApp {
                     // Återställt projekt räknas som osparat.
                     self.saved_revision = u64::MAX;
                 }
-                self.notify(format!("Öppnade {}", path.display()));
+                self.notify(format!("{} {}", t("Öppnade", "Opened"), path.display()));
             }
-            Err(e) => self.notify(format!("Kunde inte öppna {}: {e}", path.display())),
+            Err(e) => self.notify(format!("{} {}: {e}", t("Kunde inte öppna", "Could not open"), path.display())),
         }
     }
 
@@ -388,9 +389,9 @@ impl LumaApp {
         let path = match (&self.path, save_as) {
             (Some(p), false) => Some(p.clone()),
             _ => rfd::FileDialog::new()
-                .set_title("Spara projekt")
-                .add_filter("LumaMap-projekt", &["lmap"])
-                .set_file_name("projekt.lmap")
+                .set_title(t("Spara projekt", "Save project"))
+                .add_filter(t("LumaMap-projekt", "LumaMap project"), &["lmap"])
+                .set_file_name(t("projekt.lmap", "project.lmap"))
                 .save_file()
                 .map(|p| if p.extension().is_none() { p.with_extension("lmap") } else { p }),
         };
@@ -402,13 +403,13 @@ impl LumaApp {
         match p.to_ron().map_err(|e| e.to_string()).and_then(|s| std::fs::write(&path, s).map_err(|e| e.to_string())) {
             Ok(()) => {
                 self.saved_revision = self.history.revision();
-                self.notify(format!("Sparade {}", path.display()));
+                self.notify(format!("{} {}", t("Sparade", "Saved"), path.display()));
                 self.path = Some(path);
                 remove_autosave();
                 true
             }
             Err(e) => {
-                self.notify(format!("Kunde inte spara: {e}"));
+                self.notify(format!("{}: {e}", t("Kunde inte spara", "Could not save")));
                 false
             }
         }
@@ -429,7 +430,7 @@ impl LumaApp {
         }
         if let Ok(s) = self.project.to_ron() {
             if let Err(e) = std::fs::write(&path, s) {
-                log::warn!("Autospara misslyckades: {e}");
+                log::warn!("{}: {e}", t("Autospara misslyckades", "Autosave failed"));
             }
         }
     }
@@ -664,7 +665,7 @@ impl LumaApp {
                             ui.painter().text(
                                 rect.left_bottom() + egui::vec2(10.0, -10.0),
                                 egui::Align2::LEFT_BOTTOM,
-                                "Dra fönstret till projektorn och tryck F för helskärm  •  Tab = Visa/Redigera",
+                                t("Dra fönstret till projektorn och tryck F för helskärm  •  Tab = Visa/Redigera", "Drag the window to the projector and press F for fullscreen  •  Tab = Show/Edit"),
                                 egui::FontId::proportional(13.0),
                                 egui::Color32::from_gray(170),
                             );
@@ -699,18 +700,18 @@ impl LumaApp {
         let mut choice = None;
         egui::Modal::new(egui::Id::new("unsaved")).show(ctx, |ui| {
             ui.set_width(340.0);
-            ui.heading("Osparade ändringar");
+            ui.heading(t("Osparade ändringar", "Unsaved changes"));
             ui.add_space(6.0);
-            ui.label("Vill du spara projektet innan du fortsätter?");
+            ui.label(t("Vill du spara projektet innan du fortsätter?", "Do you want to save the project before continuing?"));
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("💾 Spara").clicked() {
+                if ui.button(t("💾 Spara", "💾 Save")).clicked() {
                     choice = Some(0);
                 }
-                if ui.button("Släng ändringar").clicked() {
+                if ui.button(t("Släng ändringar", "Discard changes")).clicked() {
                     choice = Some(1);
                 }
-                if ui.button("Avbryt").clicked() {
+                if ui.button(t("Avbryt", "Cancel")).clicked() {
                     choice = Some(2);
                 }
             });
@@ -806,6 +807,31 @@ impl LumaApp {
 
 fn output_viewport(id: OutputId) -> ViewportId {
     ViewportId::from_hash_of(("output", id))
+}
+
+fn config_dir() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("lumamap")
+}
+
+/// Språket: sparat val i `~/.config/lumamap/language`, annars från systemet.
+pub fn init_language() {
+    let saved = std::fs::read_to_string(config_dir().join("language")).ok();
+    let lang = saved.as_deref().and_then(Language::from_code).unwrap_or_else(Language::from_env);
+    i18n::set_language(lang);
+}
+
+/// Byter språk och kommer ihåg valet till nästa start.
+pub fn set_language_saved(lang: Language) {
+    i18n::set_language(lang);
+    let dir = config_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Err(e) = std::fs::write(dir.join("language"), lang.code()) {
+        log::warn!("{e}");
+    }
 }
 
 pub fn autosave_path() -> PathBuf {

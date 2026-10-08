@@ -45,7 +45,7 @@ pub trait MediaSource: Send {
 
 /// Initierar GStreamer. Säker att anropa flera gånger.
 pub fn init() -> Result<(), String> {
-    gstreamer::init().map_err(|e| format!("GStreamer kunde inte startas: {e}"))
+    gstreamer::init().map_err(|e| format!("{}: {e}", lm_core::i18n::t("GStreamer kunde inte startas", "GStreamer could not be started")))
 }
 
 /// Filändelser som öppnas som video respektive bild.

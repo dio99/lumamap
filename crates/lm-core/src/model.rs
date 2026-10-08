@@ -203,8 +203,8 @@ impl BlendMode {
     pub fn label(self) -> &'static str {
         match self {
             BlendMode::Normal => "Normal",
-            BlendMode::Add => "Addera",
-            BlendMode::Multiply => "Multiplicera",
+            BlendMode::Add => crate::i18n::t("Addera", "Add"),
+            BlendMode::Multiply => crate::i18n::t("Multiplicera", "Multiply"),
             BlendMode::Screen => "Screen",
         }
     }
@@ -340,7 +340,7 @@ impl Project {
     pub fn make_output(&mut self) -> Output {
         Output {
             id: OutputId(self.alloc_id()),
-            name: format!("Projektor {}", self.outputs.len() + 1),
+            name: format!("{} {}", crate::i18n::t("Projektor", "Projector"), self.outputs.len() + 1),
             resolution: [1920, 1080],
             window_pos: None,
             fullscreen: false,
@@ -400,7 +400,7 @@ impl Project {
         let (x0, y0, x1, y1) = (0.25 + off, 0.25 + off, 0.75 + off, 0.75 + off);
         Surface {
             id,
-            name: format!("Yta {}", self.surfaces.len() + 1),
+            name: format!("{} {}", crate::i18n::t("Yta", "Surface"), self.surfaces.len() + 1),
             source,
             output,
             shape: Shape::Quad,

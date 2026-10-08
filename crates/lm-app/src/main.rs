@@ -16,6 +16,7 @@ use eframe::egui;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
+    app::init_language();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     let mut startup = Startup { file: None, play: false };
@@ -23,7 +24,7 @@ fn main() -> eframe::Result {
         match arg.as_str() {
             "--play" | "-p" => startup.play = true,
             "--help" | "-h" => {
-                println!("Användning: lumamap [--play] [projekt.lmap]");
+                println!("{}", lm_core::i18n::t("Användning: lumamap [--play] [projekt.lmap]", "Usage: lumamap [--play] [project.lmap]"));
                 return Ok(());
             }
             _ => startup.file = Some(PathBuf::from(arg)),

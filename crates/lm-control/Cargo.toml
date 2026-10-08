@@ -2,8 +2,10 @@
 name = "lm-control"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+lm-core.workspace = true
 rosc.workspace = true
 log.workspace = true

@@ -5,6 +5,7 @@ use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
 use lm_core::{BlendMode, Command, Mask, EDGE_BLEND_MAX, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
+use lm_core::i18n::{self, t, Language};
 use std::time::Duration;
 
 const FILES: &[&str] = &[
@@ -30,77 +31,85 @@ impl LumaApp {
     fn toolbar(&mut self, ui: &mut Ui) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let mode = if self.show_mode { "✏ Redigera" } else { "▶ Visa" };
+            let mode = if self.show_mode { t("✏ Redigera", "✏ Edit") } else { t("▶ Visa", "▶ Show") };
             let mode_btn = egui::Button::new(RichText::new(mode).strong().size(15.0))
                 .fill(if self.show_mode { Color32::from_rgb(40, 110, 50) } else { Color32::from_rgb(30, 90, 140) });
-            if ui.add(mode_btn).on_hover_text("Växla mellan Redigera och Visa (Tab)").clicked() {
+            if ui.add(mode_btn).on_hover_text(t("Växla mellan Redigera och Visa (Tab)", "Switch between Edit and Show (Tab)")).clicked() {
                 self.show_mode = !self.show_mode;
             }
             ui.separator();
-            if ui.button("➕ Media…").on_hover_text("Lägg till video eller bild (du kan också dra filer hit)").clicked() {
+            if ui.button("➕ Media…").on_hover_text(t("Lägg till video eller bild (du kan också dra filer hit)", "Add video or image (you can also drag files here)")).clicked() {
                 if let Some(files) = rfd::FileDialog::new()
-                    .set_title("Lägg till media")
-                    .add_filter("Video och bild", FILES)
+                    .set_title(t("Lägg till media", "Add media"))
+                    .add_filter(t("Video och bild", "Video and images"), FILES)
                     .pick_files()
                 {
                     self.add_files(files, None);
                 }
             }
-            ui.menu_button("⬜ Ny yta ⏷", |ui| {
-                for (shape, label) in SHAPES {
-                    if ui.button(label).clicked() {
+            ui.menu_button(t("⬜ Ny yta ⏷", "⬜ New surface ⏷"), |ui| {
+                for shape in SHAPES {
+                    if ui.button(shape_label(shape)).clicked() {
                         let src = self.selected_source;
                         self.add_shaped(src, shape);
                     }
                 }
             })
             .response
-            .on_hover_text("Lägg till en yta");
+            .on_hover_text(t("Lägg till en yta", "Add a surface"));
             ui.separator();
-            if ui.add_enabled(self.history.can_undo(), egui::Button::new("⮪")).on_hover_text("Ångra (Ctrl+Z)").clicked() {
+            if ui.add_enabled(self.history.can_undo(), egui::Button::new("⮪")).on_hover_text(t("Ångra (Ctrl+Z)", "Undo (Ctrl+Z)")).clicked() {
                 self.undo();
             }
-            if ui.add_enabled(self.history.can_redo(), egui::Button::new("⮫")).on_hover_text("Gör om (Ctrl+Shift+Z)").clicked() {
+            if ui.add_enabled(self.history.can_redo(), egui::Button::new("⮫")).on_hover_text(t("Gör om (Ctrl+Shift+Z)", "Redo (Ctrl+Shift+Z)")).clicked() {
                 self.redo();
             }
             ui.separator();
-            ui.toggle_value(&mut self.opts.output_test, "⊞ Testbild").on_hover_text("Testbild på hela projektorn (T)");
-            ui.toggle_value(&mut self.opts.blackout, "⏹ Svart").on_hover_text("Svart på projektorn (B)");
+            ui.toggle_value(&mut self.opts.output_test, t("⊞ Testbild", "⊞ Test pattern")).on_hover_text(t("Testbild på hela projektorn (T)", "Test pattern on the whole projector (T)"));
+            ui.toggle_value(&mut self.opts.blackout, t("⏹ Svart", "⏹ Black")).on_hover_text(t("Svart på projektorn (B)", "Black out the projector (B)"));
             ui.label("Master");
             ui.add(egui::Slider::new(&mut self.opts.master, 0.0..=1.0).show_value(false))
-                .on_hover_text("Ljusstyrka för alla ytor (sparas inte)");
+                .on_hover_text(t("Ljusstyrka för alla ytor (sparas inte)", "Brightness of all surfaces (not saved)"));
             ui.separator();
             self.output_picker(ui);
             let out = self.current_output;
             if self.output_is_open(out) {
-                if ui.button("⛶ Helskärm").on_hover_text("Projektorfönstret i helskärm (F i projektorfönstret)").clicked() {
+                if ui.button(t("⛶ Helskärm", "⛶ Fullscreen")).on_hover_text(t("Projektorfönstret i helskärm (F i projektorfönstret)", "Projector window fullscreen (F in the projector window)")).clicked() {
                     let ctx = ui.ctx().clone();
                     self.set_output_fullscreen(&ctx, out, true);
                 }
-            } else if ui.button("🖵 Öppna projektorfönster").clicked() {
+            } else if ui.button(t("🖵 Öppna projektorfönster", "🖵 Open projector window")).clicked() {
                 self.open_output(out);
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.menu_button("☰", |ui| {
-                    if ui.button("Nytt projekt   Ctrl+N").clicked() {
+                    if ui.button(t("Nytt projekt   Ctrl+N", "New project   Ctrl+N")).clicked() {
                         self.request(Pending::New);
                     }
-                    if ui.button("Öppna…   Ctrl+O").clicked() {
+                    if ui.button(t("Öppna…   Ctrl+O", "Open…   Ctrl+O")).clicked() {
                         self.request(Pending::Open(None));
                     }
-                    if ui.button("Spara   Ctrl+S").clicked() {
+                    if ui.button(t("Spara   Ctrl+S", "Save   Ctrl+S")).clicked() {
                         self.save(false);
                     }
-                    if ui.button("Spara som…   Ctrl+Shift+S").clicked() {
+                    if ui.button(t("Spara som…   Ctrl+Shift+S", "Save as…   Ctrl+Shift+S")).clicked() {
                         self.save(true);
                     }
                     ui.separator();
-                    if ui.button("OSC-fjärrstyrning…").clicked() {
+                    if ui.button(t("OSC-fjärrstyrning…", "OSC remote control…")).clicked() {
                         self.osc_window_open = true;
                     }
+                    ui.separator();
+                    ui.menu_button("🌐 Language / Språk", |ui| {
+                        for lang in Language::ALL {
+                            if ui.selectable_label(i18n::language() == lang, lang.native_name()).clicked() {
+                                crate::app::set_language_saved(lang);
+                            }
+                        }
+                    });
                 });
-                if ui.button("💾").on_hover_text("Spara (Ctrl+S)").clicked() {
+                if ui.button("💾").on_hover_text(t("Spara (Ctrl+S)", "Save (Ctrl+S)")).clicked() {
                     self.save(false);
                 }
                 let name = self
@@ -108,7 +117,7 @@ impl LumaApp {
                     .as_ref()
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "Namnlöst projekt".into());
+                    .unwrap_or_else(|| t("Namnlöst projekt", "Untitled project").into());
                 let star = if self.dirty() { " •" } else { "" };
                 ui.label(RichText::new(format!("{name}{star}")).color(Color32::from_gray(170)));
             });
@@ -117,12 +126,12 @@ impl LumaApp {
 
         if let Some(path) = self.restore_offer.clone() {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Det finns ett osparat projekt från förra gången.").color(Color32::from_rgb(255, 200, 80)));
-                if ui.button("Återställ").clicked() {
+                ui.label(RichText::new(t("Det finns ett osparat projekt från förra gången.", "There is an unsaved project from last time.")).color(Color32::from_rgb(255, 200, 80)));
+                if ui.button(t("Återställ", "Restore")).clicked() {
                     self.load(&path);
                     self.restore_offer = None;
                 }
-                if ui.button("Nej tack").clicked() {
+                if ui.button(t("Nej tack", "No thanks")).clicked() {
                     let _ = std::fs::remove_file(&path);
                     self.restore_offer = None;
                 }
@@ -132,7 +141,7 @@ impl LumaApp {
     }
 
     fn output_picker(&mut self, ui: &mut Ui) {
-        ui.label("Utgång:");
+        ui.label(t("Utgång:", "Output:"));
         let current = self.project.output(self.current_output).map(|o| o.name.clone()).unwrap_or_default();
         let mut pick = self.current_output;
         let mut add = false;
@@ -141,7 +150,7 @@ impl LumaApp {
                 ui.selectable_value(&mut pick, o.id, &o.name);
             }
             ui.separator();
-            add = ui.button("➕ Ny utgång").on_hover_text("Lägg till en projektor till").clicked();
+            add = ui.button(t("➕ Ny utgång", "➕ New output")).on_hover_text(t("Lägg till en projektor till", "Add another projector")).clicked();
         });
         if add {
             self.add_output();
@@ -160,7 +169,7 @@ impl LumaApp {
             match msg {
                 Some(m) => ui.label(RichText::new(m).color(ACCENT)),
                 None => ui.label(
-                    RichText::new("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort")
+                    RichText::new(t("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort", "Drag the corners with the mouse  •  Arrows nudge (Shift = 10 px)  •  C = next corner  •  Space = play/pause  •  Del = delete"))
                         .color(Color32::from_gray(140)),
                 ),
             };
@@ -168,12 +177,12 @@ impl LumaApp {
                 let (text, color) = match (&self.osc, &self.osc_error) {
                     (Some(s), _) => (format!("OSC :{}", s.port()), Color32::from_rgb(120, 200, 120)),
                     (None, Some(_)) => ("OSC ✖".to_string(), Color32::from_rgb(255, 100, 100)),
-                    _ => ("OSC av".to_string(), Color32::from_gray(120)),
+                    _ => (t("OSC av", "OSC off").to_string(), Color32::from_gray(120)),
                 };
                 // Blinkar till när ett meddelande kommer in.
                 let fresh = self.osc_last.as_ref().is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300));
                 let color = if fresh { ACCENT } else { color };
-                if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text("OSC-inställningar").clicked() {
+                if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text(t("OSC-inställningar", "OSC settings")).clicked() {
                     self.osc_window_open = true;
                 }
                 ui.separator();
@@ -188,7 +197,7 @@ impl LumaApp {
         ui.add_space(6.0);
         ui.heading("Media");
         if self.project.sources.is_empty() {
-            ui.label(RichText::new("Dra in videor eller bilder här.").color(Color32::from_gray(140)));
+            ui.label(RichText::new(t("Dra in videor eller bilder här.", "Drag videos or images here.")).color(Color32::from_gray(140)));
         }
         let mut remove = None;
         let mut assign = None;
@@ -211,7 +220,7 @@ impl LumaApp {
                 let r = ui.selectable_label(selected, text);
                 let r = match &error {
                     Some(e) => r.on_hover_text(e),
-                    None => r.on_hover_text("Dubbelklicka för att visa på markerad yta"),
+                    None => r.on_hover_text(t("Dubbelklicka för att visa på markerad yta", "Double-click to show on the selected surface")),
                 };
                 if r.clicked() {
                     self.selected_source = Some(src.id);
@@ -220,7 +229,7 @@ impl LumaApp {
                     assign = Some(src.id);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("🗑").on_hover_text("Ta bort media").clicked() {
+                    if ui.small_button("🗑").on_hover_text(t("Ta bort media", "Remove media")).clicked() {
                         remove = Some(src.id);
                     }
                 });
@@ -241,24 +250,24 @@ impl LumaApp {
             }
         }
         ui.horizontal(|ui| {
-            if ui.small_button("+ Färg").clicked() {
-                let s = self.project.make_source("Färg", SourceKind::Color { rgba: [1.0, 1.0, 1.0, 1.0] });
+            if ui.small_button(t("+ Färg", "+ Color")).clicked() {
+                let s = self.project.make_source(t("Färg", "Color"), SourceKind::Color { rgba: [1.0, 1.0, 1.0, 1.0] });
                 self.selected_source = Some(s.id);
                 let index = self.project.sources.len();
                 self.exec(Command::AddSource { source: s, index }, None);
             }
-            if ui.small_button("+ Testbild").clicked() {
-                let s = self.project.make_source("Testbild", SourceKind::TestPattern);
+            if ui.small_button(t("+ Testbild", "+ Test pattern")).clicked() {
+                let s = self.project.make_source(t("Testbild", "Test pattern"), SourceKind::TestPattern);
                 self.selected_source = Some(s.id);
                 let index = self.project.sources.len();
                 self.exec(Command::AddSource { source: s, index }, None);
             }
         });
         ui.horizontal(|ui| {
-            let r = ui.menu_button("+ Kamera ⏷", |ui| {
+            let r = ui.menu_button(t("+ Kamera ⏷", "+ Camera ⏷"), |ui| {
                 let cameras = self.cameras.get_or_insert_with(lm_media::list_cameras).clone();
                 if cameras.is_empty() {
-                    ui.label("Ingen kamera hittades");
+                    ui.label(t("Ingen kamera hittades", "No camera found"));
                 }
                 for c in &cameras {
                     // Samma namn på flera enheter (t.ex. vanlig kamera och IR) – visa enheten också.
@@ -269,14 +278,14 @@ impl LumaApp {
                     }
                 }
                 ui.separator();
-                if ui.button("⟳ Sök igen").clicked() {
+                if ui.button(t("⟳ Sök igen", "⟳ Search again")).clicked() {
                     self.cameras = None;
                 }
             });
-            r.response.on_hover_text("Webbkamera eller annan videoenhet");
+            r.response.on_hover_text(t("Webbkamera eller annan videoenhet", "Webcam or other video device"));
             if ui
-                .small_button("+ Ström…")
-                .on_hover_text("RTSP, SRT, UDP, HTTP eller NDI via GStreamer")
+                .small_button(t("+ Ström…", "+ Stream…"))
+                .on_hover_text(t("RTSP, SRT, UDP, HTTP eller NDI via GStreamer", "RTSP, SRT, UDP, HTTP or NDI via GStreamer"))
                 .clicked()
             {
                 self.stream_input = Some(self.stream_input.take().unwrap_or_default());
@@ -285,11 +294,11 @@ impl LumaApp {
         if let Some(mut uri) = self.stream_input.take() {
             let mut keep = true;
             ui.horizontal(|ui| {
-                let r = ui.add(egui::TextEdit::singleline(&mut uri).hint_text("rtsp://kamera.local/stream").desired_width(150.0));
+                let r = ui.add(egui::TextEdit::singleline(&mut uri).hint_text(t("rtsp://kamera.local/stream", "rtsp://camera.local/stream")).desired_width(150.0));
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (ui.small_button("Lägg till").clicked() || enter) && !uri.trim().is_empty() {
+                if (ui.small_button(t("Lägg till", "Add")).clicked() || enter) && !uri.trim().is_empty() {
                     let uri = uri.trim().to_string();
-                    let name = uri.split("://").nth(1).unwrap_or(&uri).split('/').next().unwrap_or("Ström").to_string();
+                    let name = uri.split("://").nth(1).unwrap_or(&uri).split('/').next().unwrap_or(t("Ström", "Stream")).to_string();
                     self.add_source_shown(name, SourceKind::Stream { uri, muted: false });
                     keep = false;
                 }
@@ -303,12 +312,12 @@ impl LumaApp {
         }
 
         ui.add_space(14.0);
-        ui.heading("Ytor");
+        ui.heading(t("Ytor", "Surfaces"));
         // Bara ytorna på vald utgång. `on_output` är deras index i hela listan.
         let out = self.current_output;
         let on_output: Vec<usize> = (0..self.project.surfaces.len()).filter(|&i| self.project.surfaces[i].output == out).collect();
         if on_output.is_empty() {
-            ui.label(RichText::new("Inga ytor här än. Klicka ⬜ Ny yta.").color(Color32::from_gray(140)));
+            ui.label(RichText::new(t("Inga ytor här än. Klicka ⬜ Ny yta.", "No surfaces here yet. Click ⬜ New surface.")).color(Color32::from_gray(140)));
         }
         let mut action: Option<Command> = None;
         // Översta ytan visas först i listan.
@@ -317,7 +326,7 @@ impl LumaApp {
             let (below, above) = (k.checked_sub(1).map(|j| on_output[j]), on_output.get(k + 1).copied());
             ui.horizontal(|ui| {
                 let mut visible = s.visible;
-                if ui.checkbox(&mut visible, "").on_hover_text("Synlig").changed() {
+                if ui.checkbox(&mut visible, "").on_hover_text(t("Synlig", "Visible")).changed() {
                     let mut ns = s.clone();
                     ns.visible = visible;
                     action = Some(Command::ReplaceSurface(ns));
@@ -327,10 +336,10 @@ impl LumaApp {
                     self.select(Some(s.id));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(below.is_some(), egui::Button::new("⏷").small()).on_hover_text("Flytta bakåt").clicked() {
+                    if ui.add_enabled(below.is_some(), egui::Button::new("⏷").small()).on_hover_text(t("Flytta bakåt", "Move back")).clicked() {
                         action = below.map(|index| Command::MoveSurfaceTo { id: s.id, index });
                     }
-                    if ui.add_enabled(above.is_some(), egui::Button::new("⏶").small()).on_hover_text("Flytta framåt").clicked() {
+                    if ui.add_enabled(above.is_some(), egui::Button::new("⏶").small()).on_hover_text(t("Flytta framåt", "Move forward")).clicked() {
                         action = above.map(|index| Command::MoveSurfaceTo { id: s.id, index });
                     }
                 });
@@ -349,13 +358,13 @@ impl LumaApp {
             ui.heading("Cues");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let go = egui::Button::new(RichText::new("GO ▶").strong()).fill(Color32::from_rgb(40, 110, 50));
-                if ui.add_enabled(!self.project.cues.is_empty(), go).on_hover_text("Nästa cue (Enter)").clicked() {
+                if ui.add_enabled(!self.project.cues.is_empty(), go).on_hover_text(t("Nästa cue (Enter)", "Next cue (Enter)")).clicked() {
                     self.go_next_cue(1);
                 }
             });
         });
         if self.project.cues.is_empty() {
-            ui.label(RichText::new("Ställ in ytorna och klicka + Spara cue.").color(Color32::from_gray(140)));
+            ui.label(RichText::new(t("Ställ in ytorna och klicka + Spara cue.", "Set up the surfaces and click + Save cue.")).color(Color32::from_gray(140)));
         }
         let (mut go, mut remove) = (None, None);
         for (i, c) in self.project.cues.iter().enumerate() {
@@ -367,7 +376,7 @@ impl LumaApp {
                 }
                 let r = ui
                     .selectable_label(self.selected_cue == Some(c.id), text)
-                    .on_hover_text(format!("Övergång {:.1} s  •  dubbelklicka för GO", c.fade));
+                    .on_hover_text(format!("{} {:.1} s  •  {}", t("Övergång", "Fade"), c.fade, t("dubbelklicka för GO", "double-click for GO")));
                 if r.clicked() {
                     self.selected_cue = Some(c.id);
                 }
@@ -375,10 +384,10 @@ impl LumaApp {
                     go = Some(c.id);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("🗑").on_hover_text("Ta bort cue").clicked() {
+                    if ui.small_button("🗑").on_hover_text(t("Ta bort cue", "Delete cue")).clicked() {
                         remove = Some(c.id);
                     }
-                    if ui.small_button("▶").on_hover_text("Gå till cuen").clicked() {
+                    if ui.small_button("▶").on_hover_text(t("Gå till cuen", "Go to this cue")).clicked() {
                         go = Some(c.id);
                     }
                 });
@@ -391,8 +400,8 @@ impl LumaApp {
             self.exec(Command::RemoveCue(id), None);
         }
         if ui
-            .button("+ Spara cue")
-            .on_hover_text("Sparar vilka ytor som syns, deras opacitet och media")
+            .button(t("+ Spara cue", "+ Save cue"))
+            .on_hover_text(t("Sparar vilka ytor som syns, deras opacitet och media", "Saves which surfaces are visible, their opacity and media"))
             .clicked()
         {
             let cue = self.project.capture_cue(format!("Cue {}", self.project.cues.len() + 1), 1.0);
@@ -418,7 +427,7 @@ impl LumaApp {
                 gesture = Some(self.field_gesture(&r));
             }
             ui.horizontal(|ui| {
-                ui.label("Övergång");
+                ui.label(t("Övergång", "Fade"));
                 let r = ui.add(egui::DragValue::new(&mut c.fade).range(0.0..=60.0).speed(0.05).suffix(" s"));
                 if r.changed() {
                     gesture = Some(self.field_gesture(&r));
@@ -426,18 +435,18 @@ impl LumaApp {
             });
             ui.horizontal(|ui| {
                 if ui
-                    .button("⟳ Uppdatera")
-                    .on_hover_text("Spara nuvarande läge i den här cuen")
+                    .button(t("⟳ Uppdatera", "⟳ Update"))
+                    .on_hover_text(t("Spara nuvarande läge i den här cuen", "Store the current state in this cue"))
                     .clicked()
                 {
                     c.surfaces = self.project.capture_cue("", 0.0).surfaces;
                 }
                 let index = self.project.cues.iter().position(|x| x.id == c.id).unwrap_or(0);
                 let n = self.project.cues.len();
-                if ui.add_enabled(index > 0, egui::Button::new("⏶").small()).on_hover_text("Flytta upp").clicked() {
+                if ui.add_enabled(index > 0, egui::Button::new("⏶").small()).on_hover_text(t("Flytta upp", "Move up")).clicked() {
                     self.exec(Command::MoveCueTo { id: c.id, index: index - 1 }, None);
                 }
-                if ui.add_enabled(index + 1 < n, egui::Button::new("⏷").small()).on_hover_text("Flytta ner").clicked() {
+                if ui.add_enabled(index + 1 < n, egui::Button::new("⏷").small()).on_hover_text(t("Flytta ner", "Move down")).clicked() {
                     self.exec(Command::MoveCueTo { id: c.id, index: index + 1 }, None);
                 }
             });
@@ -450,31 +459,28 @@ impl LumaApp {
     pub fn osc_window(&mut self, ctx: &egui::Context) {
         let mut open = self.osc_window_open;
         let mut settings = self.project.settings.clone();
-        egui::Window::new("OSC-fjärrstyrning").open(&mut open).resizable(false).show(ctx, |ui| {
-            ui.checkbox(&mut settings.osc_enabled, "Ta emot OSC");
+        egui::Window::new(t("OSC-fjärrstyrning", "OSC remote control")).open(&mut open).resizable(false).show(ctx, |ui| {
+            ui.checkbox(&mut settings.osc_enabled, t("Ta emot OSC", "Receive OSC"));
             ui.horizontal(|ui| {
-                ui.label("UDP-port");
+                ui.label(t("UDP-port", "UDP port"));
                 ui.add(egui::DragValue::new(&mut settings.osc_port).range(1024..=65535));
             });
             match (&self.osc, &self.osc_error) {
-                (Some(s), _) => ui.colored_label(Color32::from_rgb(120, 220, 120), format!("Lyssnar på port {}", s.port())),
+                (Some(s), _) => ui.colored_label(Color32::from_rgb(120, 220, 120), format!("{} {}", t("Lyssnar på port", "Listening on port"), s.port())),
                 (None, Some(e)) => ui.colored_label(Color32::from_rgb(255, 100, 100), e),
-                _ => ui.label("Avstängd"),
+                _ => ui.label(t("Avstängd", "Off")),
             };
             if let Some((m, t)) = &self.osc_last {
-                ui.label(RichText::new(format!("Senast ({:.0} s sedan): {m}", t.elapsed().as_secs_f32())).color(Color32::from_gray(150)));
+                ui.label(RichText::new(format!("{} ({:.0} s): {m}", i18n::t("Senast", "Last"), t.elapsed().as_secs_f32())).color(Color32::from_gray(150)));
             }
             ui.add_space(8.0);
-            ui.label(RichText::new("Adresser (mellanslag i namn skrivs som _):").strong());
-            ui.label(
-                RichText::new(
-                    "/lumamap/cue/<nr>/go\n/lumamap/cue/next\n/lumamap/cue/prev\n\
-                     /lumamap/surface/<namn>/opacity  f\n/lumamap/surface/<namn>/visible  i\n\
-                     /lumamap/source/<namn>/play\n/lumamap/source/<namn>/pause\n/lumamap/source/<namn>/seek  f\n\
-                     /lumamap/master/opacity  f\n/lumamap/blackout  i",
-                )
-                .monospace(),
-            );
+            ui.label(RichText::new(t("Adresser (mellanslag i namn skrivs som _):", "Addresses (write spaces in names as _):")).strong());
+            let addresses = "/lumamap/cue/<nr>/go\n/lumamap/cue/next\n/lumamap/cue/prev\n\
+                 /lumamap/surface/<name>/opacity  f\n/lumamap/surface/<name>/visible  i\n\
+                 /lumamap/source/<name>/play\n/lumamap/source/<name>/pause\n/lumamap/source/<name>/seek  f\n\
+                 /lumamap/master/opacity  f\n/lumamap/blackout  i";
+            let addresses = addresses.replace("<name>", t("<namn>", "<name>"));
+            ui.label(RichText::new(addresses).monospace());
         });
         self.osc_window_open = open;
         if settings != self.project.settings {
@@ -487,7 +493,7 @@ impl LumaApp {
         let Some(mut s) = self.selected.and_then(|id| self.project.surface(id).cloned()) else {
             self.output_properties(ui);
             ui.add_space(14.0);
-            ui.label(RichText::new("Markera en yta för att ändra den.").color(Color32::from_gray(140)));
+            ui.label(RichText::new(t("Markera en yta för att ändra den.", "Select a surface to edit it.")).color(Color32::from_gray(140)));
             ui.add_space(10.0);
             self.quick_start(ui);
             return;
@@ -507,9 +513,9 @@ impl LumaApp {
                 .source
                 .and_then(|id| self.project.source(id))
                 .map(|src| src.name.clone())
-                .unwrap_or_else(|| "— ingen —".into());
+                .unwrap_or_else(|| t("— ingen —", "— none —").into());
             egui::ComboBox::from_id_salt("source_pick").selected_text(current).width(170.0).show_ui(ui, |ui| {
-                ui.selectable_value(&mut s.source, None, "— ingen —");
+                ui.selectable_value(&mut s.source, None, t("— ingen —", "— none —"));
                 for src in &self.project.sources {
                     ui.selectable_value(&mut s.source, Some(src.id), &src.name);
                 }
@@ -517,7 +523,7 @@ impl LumaApp {
             ui.end_row();
 
             if self.project.outputs.len() > 1 {
-                ui.label("Utgång");
+                ui.label(t("Utgång", "Output"));
                 let current = self.project.output(s.output).map(|o| o.name.clone()).unwrap_or_default();
                 egui::ComboBox::from_id_salt("surface_output").selected_text(current).width(170.0).show_ui(ui, |ui| {
                     for o in &self.project.outputs {
@@ -527,14 +533,14 @@ impl LumaApp {
                 ui.end_row();
             }
 
-            ui.label("Form");
+            ui.label(t("Form", "Shape"));
             ui.horizontal(|ui| {
                 let mut shape = s.shape;
                 let same = |a: &Shape, b: &Shape| std::mem::discriminant(a) == std::mem::discriminant(b);
-                let current = SHAPES.iter().find(|(o, _)| same(o, &shape)).map_or("", |(_, l)| *l);
+                let current = shape_label(shape);
                 egui::ComboBox::from_id_salt("shape_pick").selected_text(current).width(90.0).show_ui(ui, |ui| {
-                    for (option, label) in SHAPES {
-                        if ui.selectable_label(same(&option, &shape), label).on_hover_text(shape_hint(option)).clicked()
+                    for option in SHAPES {
+                        if ui.selectable_label(same(&option, &shape), shape_label(option)).on_hover_text(shape_hint(option)).clicked()
                             && !same(&option, &shape)
                         {
                             shape = option;
@@ -542,10 +548,10 @@ impl LumaApp {
                     }
                 });
                 if let Shape::Mesh { cols, rows } = &mut shape {
-                    ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(" kol"))
-                        .on_hover_text("Antal punkter på bredden");
-                    ui.add(egui::DragValue::new(rows).range(MESH_MIN..=MESH_MAX).suffix(" rad"))
-                        .on_hover_text("Antal punkter på höjden");
+                    ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(t(" kol", " col")))
+                        .on_hover_text(t("Antal punkter på bredden", "Number of points across"));
+                    ui.add(egui::DragValue::new(rows).range(MESH_MIN..=MESH_MAX).suffix(t(" rad", " row")))
+                        .on_hover_text(t("Antal punkter på höjden", "Number of points down"));
                 }
                 if shape != s.shape {
                     reshape(&mut s, shape);
@@ -554,7 +560,7 @@ impl LumaApp {
             });
             ui.end_row();
 
-            ui.label("Blandning");
+            ui.label(t("Blandning", "Blending"));
             egui::ComboBox::from_id_salt("blend_pick").selected_text(s.blend.label()).width(170.0).show_ui(ui, |ui| {
                 for mode in BlendMode::ALL {
                     ui.selectable_value(&mut s.blend, mode, mode.label()).on_hover_text(blend_hint(mode));
@@ -562,7 +568,7 @@ impl LumaApp {
             });
             ui.end_row();
 
-            ui.label("Opacitet");
+            ui.label(t("Opacitet", "Opacity"));
             let r = ui.add(egui::Slider::new(&mut s.opacity, 0.0..=1.0).show_value(true));
             if r.changed() {
                 gesture = Some(self.field_gesture(&r));
@@ -571,8 +577,8 @@ impl LumaApp {
 
             ui.label("");
             ui.horizontal(|ui| {
-                ui.checkbox(&mut s.visible, "Synlig");
-                ui.checkbox(&mut s.locked, "Låst");
+                ui.checkbox(&mut s.visible, t("Synlig", "Visible"));
+                ui.checkbox(&mut s.locked, t("Låst", "Locked"));
             });
             ui.end_row();
         });
@@ -580,28 +586,28 @@ impl LumaApp {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             let mut test = self.opts.test_surfaces.contains(&s.id);
-            if ui.toggle_value(&mut test, "⊞ Testbild").on_hover_text("Visa testbild på ytan medan du riktar in den").changed() {
+            if ui.toggle_value(&mut test, t("⊞ Testbild", "⊞ Test pattern")).on_hover_text(t("Visa testbild på ytan medan du riktar in den", "Show a test pattern on the surface while aligning it")).changed() {
                 if test {
                     self.opts.test_surfaces.insert(s.id);
                 } else {
                     self.opts.test_surfaces.remove(&s.id);
                 }
             }
-            if ui.button("⟲ Rak").on_hover_text("Gör ytan till en rak rektangel igen").clicked() {
+            if ui.button(t("⟲ Rak", "⟲ Straighten")).on_hover_text(t("Gör ytan till en rak rektangel igen", "Make the surface a straight rectangle again")).clicked() {
                 let xs = s.dst_pts.iter().map(|p| p[0]);
                 let ys = s.dst_pts.iter().map(|p| p[1]);
                 let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
                 let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
                 s.dst_pts = shape_points(s.shape, &[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
             }
-            if ui.button("⛶ Fyll").on_hover_text("Fyll hela projektorbilden").clicked() {
+            if ui.button(t("⛶ Fyll", "⛶ Fill")).on_hover_text(t("Fyll hela projektorbilden", "Fill the whole projector image")).clicked() {
                 s.dst_pts = shape_points(s.shape, &UNIT_QUAD);
             }
         });
         ui.horizontal(|ui| {
-            if ui.button("🗐 Duplicera").clicked() {
+            if ui.button(t("🗐 Duplicera", "🗐 Duplicate")).clicked() {
                 let mut copy = self.project.make_quad(s.source, s.output);
-                copy.name = format!("{} kopia", s.name);
+                copy.name = format!("{} {}", s.name, t("kopia", "copy"));
                 copy.shape = s.shape;
                 copy.mask = s.mask.clone();
                 copy.blend = s.blend;
@@ -614,7 +620,7 @@ impl LumaApp {
                 self.select(Some(id));
                 return;
             }
-            if ui.button("🗑 Ta bort").clicked() {
+            if ui.button(t("🗑 Ta bort", "🗑 Delete")).clicked() {
                 self.remove_selected();
             }
         });
@@ -624,7 +630,7 @@ impl LumaApp {
         ui.heading("Mask");
         match &mut s.mask {
             None => {
-                ui.label(RichText::new("Dölj delar av ytan, t.ex. ett fönster eller en dörr.").color(Color32::from_gray(140)));
+                ui.label(RichText::new(t("Dölj delar av ytan, t.ex. ett fönster eller en dörr.", "Hide parts of the surface, e.g. a window or a door.")).color(Color32::from_gray(140)));
                 if ui.button("➕ Mask").clicked() {
                     // Rektangel lite innanför ytan att börja dra i.
                     let xs = s.dst_pts.iter().map(|p| p[0]);
@@ -645,17 +651,17 @@ impl LumaApp {
             Some(m) => {
                 ui.horizontal(|ui| {
                     if ui
-                        .toggle_value(&mut self.mask_edit, "✏ Redigera mask")
-                        .on_hover_text("Dra maskens punkter i stället för ytans hörn")
+                        .toggle_value(&mut self.mask_edit, t("✏ Redigera mask", "✏ Edit mask"))
+                        .on_hover_text(t("Dra maskens punkter i stället för ytans hörn", "Drag the mask's points instead of the surface corners"))
                         .changed()
                     {
                         self.selected_point = None;
                     }
-                    ui.radio_value(&mut m.invert, true, "Dölj inuti");
-                    ui.radio_value(&mut m.invert, false, "Visa inuti");
+                    ui.radio_value(&mut m.invert, true, t("Dölj inuti", "Hide inside"));
+                    ui.radio_value(&mut m.invert, false, t("Visa inuti", "Show inside"));
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Mjuk kant");
+                    ui.label(t("Mjuk kant", "Feather"));
                     let r = ui.add(egui::Slider::new(&mut m.feather, 0.0..=200.0).suffix(" px"));
                     if r.changed() {
                         gesture = Some(self.field_gesture(&r));
@@ -663,11 +669,11 @@ impl LumaApp {
                 });
                 if self.mask_edit {
                     ui.label(
-                        RichText::new("Dubbelklicka på en kant för ny punkt, högerklicka på en punkt för att ta bort den.")
+                        RichText::new(t("Dubbelklicka på en kant för ny punkt, högerklicka på en punkt för att ta bort den.", "Double-click an edge to add a point, right-click a point to remove it."))
                             .color(Color32::from_gray(140)),
                     );
                 }
-                if ui.button("🗑 Ta bort mask").clicked() {
+                if ui.button(t("🗑 Ta bort mask", "🗑 Remove mask")).clicked() {
                     s.mask = None;
                     self.mask_edit = false;
                 }
@@ -686,8 +692,8 @@ impl LumaApp {
         // Utsnitt ur källan + uppspelning.
         if let Some(sid) = s.source {
             ui.add_space(14.0);
-            ui.heading("Utsnitt ur media");
-            ui.label(RichText::new("Dra hörnen för att välja vilken del som visas.").color(Color32::from_gray(140)));
+            ui.heading(t("Utsnitt ur media", "Media crop"));
+            ui.label(RichText::new(t("Dra hörnen för att välja vilken del som visas.", "Drag the corners to choose which part is shown.")).color(Color32::from_gray(140)));
             let (tex, size) = self
                 .renderer
                 .source_texture(sid)
@@ -707,7 +713,7 @@ impl LumaApp {
                 );
             }
             self.canvas(ui, rect, PtKind::Src, "source");
-            if ui.small_button("⟲ Hela bilden").clicked() {
+            if ui.small_button(t("⟲ Hela bilden", "⟲ Whole image")).clicked() {
                 self.set_points(s.id, PtKind::Src, UNIT_QUAD.to_vec(), None);
             }
             self.transport(ui, sid);
@@ -717,8 +723,8 @@ impl LumaApp {
     /// Kamera och ström: status, paus, försök igen, ljud.
     fn live_controls(&mut self, ui: &mut Ui, src: &lm_core::Source) {
         let (title, muted) = match &src.kind {
-            SourceKind::Camera { .. } => ("Kamera", None),
-            SourceKind::Stream { muted, .. } => ("Ström", Some(*muted)),
+            SourceKind::Camera { .. } => (t("Kamera", "Camera"), None),
+            SourceKind::Stream { muted, .. } => (t("Ström", "Stream"), Some(*muted)),
             _ => return,
         };
         ui.add_space(14.0);
@@ -733,12 +739,12 @@ impl LumaApp {
         match media.error() {
             Some(e) => {
                 ui.colored_label(Color32::from_rgb(255, 100, 100), e);
-                restart = ui.button("⟳ Försök igen").clicked();
+                restart = ui.button(t("⟳ Försök igen", "⟳ Try again")).clicked();
             }
             None => {
-                let size = media.size().map_or("väntar på bild…".to_string(), |s| format!("{} × {}", s[0], s[1]));
+                let size = media.size().map_or(t("väntar på bild…", "waiting for picture…").to_string(), |s| format!("{} × {}", s[0], s[1]));
                 ui.horizontal(|ui| {
-                    let label = if media.is_playing() { "⏸ Paus" } else { "▶ Spela" };
+                    let label = if media.is_playing() { t("⏸ Paus", "⏸ Pause") } else { t("▶ Spela", "▶ Play") };
                     if ui.button(label).clicked() {
                         if media.is_playing() {
                             media.pause();
@@ -754,7 +760,7 @@ impl LumaApp {
             self.media.restart(src.id);
         }
         if let (Some(mut m), SourceKind::Stream { uri, .. }) = (muted, &src.kind) {
-            if ui.checkbox(&mut m, "🔇 Ljud av").changed() {
+            if ui.checkbox(&mut m, t("🔇 Ljud av", "🔇 Mute")).changed() {
                 let mut ns = src.clone();
                 ns.kind = SourceKind::Stream { uri: uri.clone(), muted: m };
                 self.exec(Command::ReplaceSource(ns), None);
@@ -770,14 +776,14 @@ impl LumaApp {
         }
         let SourceKind::Video { path, looping, muted } = &src.kind else { return };
         ui.add_space(14.0);
-        ui.heading("Uppspelning");
+        ui.heading(t("Uppspelning", "Playback"));
         let Some(media) = self.media.get_mut(sid) else { return };
         if let Some(e) = media.error() {
             ui.colored_label(Color32::from_rgb(255, 100, 100), e);
             return;
         }
         ui.horizontal(|ui| {
-            let label = if media.is_playing() { "⏸ Paus" } else { "▶ Spela" };
+            let label = if media.is_playing() { t("⏸ Paus", "⏸ Pause") } else { t("▶ Spela", "▶ Play") };
             if ui.button(label).clicked() {
                 if media.is_playing() {
                     media.pause();
@@ -785,7 +791,7 @@ impl LumaApp {
                     media.play();
                 }
             }
-            if ui.button("⏮ Början").clicked() {
+            if ui.button(t("⏮ Början", "⏮ Start")).clicked() {
                 media.seek(0.0);
             }
         });
@@ -803,8 +809,8 @@ impl LumaApp {
         let (mut l, mut m) = (*looping, *muted);
         let mut changed = false;
         ui.horizontal(|ui| {
-            changed |= ui.checkbox(&mut l, "🔁 Loopa").changed();
-            changed |= ui.checkbox(&mut m, "🔇 Ljud av").changed();
+            changed |= ui.checkbox(&mut l, t("🔁 Loopa", "🔁 Loop")).changed();
+            changed |= ui.checkbox(&mut m, t("🔇 Ljud av", "🔇 Mute")).changed();
         });
         if changed {
             let mut ns = src.clone();
@@ -820,17 +826,17 @@ impl LumaApp {
     fn output_properties(&mut self, ui: &mut Ui) {
         let Some(mut o) = self.project.output(self.current_output).cloned() else { return };
         let before = o.clone();
-        ui.heading("Utgång");
+        ui.heading(t("Utgång", "Output"));
         let r = ui.add(egui::TextEdit::singleline(&mut o.name).font(egui::TextStyle::Heading));
         let mut gesture = (r.changed() || r.gained_focus()).then(|| self.field_gesture(&r));
         ui.label(RichText::new(format!("{} × {} px", o.resolution[0], o.resolution[1])).color(Color32::from_gray(140)));
 
         ui.add_space(8.0);
-        ui.label(RichText::new("Kantblandning").strong())
-            .on_hover_text("Där två projektorer överlappar tonas bilden ut mot kanten så att överlappet inte blir dubbelt så ljust.");
+        ui.label(RichText::new(t("Kantblandning", "Edge blending")).strong())
+            .on_hover_text(t("Där två projektorer överlappar tonas bilden ut mot kanten så att överlappet inte blir dubbelt så ljust.", "Where two projectors overlap, the image fades out towards the edge so the overlap isn't twice as bright."));
         egui::Grid::new("edge_blend").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
             let e = &mut o.edge_blend;
-            for (label, w) in [("Vänster", &mut e.left), ("Höger", &mut e.right), ("Topp", &mut e.top), ("Botten", &mut e.bottom)] {
+            for (label, w) in [(t("Vänster", "Left"), &mut e.left), (t("Höger", "Right"), &mut e.right), (t("Topp", "Top"), &mut e.top), (t("Botten", "Bottom"), &mut e.bottom)] {
                 ui.label(label);
                 let r = ui.add(
                     egui::Slider::new(w, 0.0..=EDGE_BLEND_MAX)
@@ -845,7 +851,7 @@ impl LumaApp {
             ui.label("Gamma");
             let r = ui
                 .add(egui::Slider::new(&mut e.gamma, 1.0..=3.0).fixed_decimals(1))
-                .on_hover_text("Projektorns gamma, oftast 2.2. Justera om överlappet ser ljusare eller mörkare ut.");
+                .on_hover_text(t("Projektorns gamma, oftast 2.2. Justera om överlappet ser ljusare eller mörkare ut.", "The projector's gamma, usually 2.2. Adjust if the overlap looks brighter or darker."));
             if r.changed() {
                 gesture = Some(self.field_gesture(&r));
             }
@@ -853,20 +859,20 @@ impl LumaApp {
         });
         if o.edge_blend.is_active() {
             ui.label(
-                RichText::new("Bredden ska vara lika stor som överlappet. Slå på ⊞ Testbild för att rikta in.")
+                RichText::new(t("Bredden ska vara lika stor som överlappet. Slå på ⊞ Testbild för att rikta in.", "The width should match the overlap. Turn on ⊞ Test pattern to align."))
                     .color(Color32::from_gray(140)),
             );
         }
         ui.add_space(6.0);
         let mut remove = false;
         ui.horizontal(|ui| {
-            if ui.button("➕ Ny utgång").clicked() {
+            if ui.button(t("➕ Ny utgång", "➕ New output")).clicked() {
                 self.add_output();
             }
             let many = self.project.outputs.len() > 1;
             remove = ui
-                .add_enabled(many, egui::Button::new("🗑 Ta bort"))
-                .on_hover_text("Tar bort utgången och dess ytor")
+                .add_enabled(many, egui::Button::new(t("🗑 Ta bort", "🗑 Delete")))
+                .on_hover_text(t("Tar bort utgången och dess ytor", "Removes the output and its surfaces"))
                 .clicked();
         });
         if remove {
@@ -878,11 +884,11 @@ impl LumaApp {
 
     fn quick_start(&mut self, ui: &mut Ui) {
         egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.label(RichText::new("Kom igång").strong());
+            ui.label(RichText::new(t("Kom igång", "Getting started")).strong());
             ui.add_space(4.0);
-            ui.label("1. Dra en video eller bild till fönstret.");
-            ui.label("2. Dra ytans fyra hörn så att de passar väggen.");
-            ui.label("3. Tryck ▶ Visa, och F i projektorfönstret för helskärm.");
+            ui.label(t("1. Dra en video eller bild till fönstret.", "1. Drag a video or image into the window."));
+            ui.label(t("2. Dra ytans fyra hörn så att de passar väggen.", "2. Drag the surface's four corners to fit the wall."));
+            ui.label(t("3. Tryck ▶ Visa, och F i projektorfönstret för helskärm.", "3. Press ▶ Show, and F in the projector window for fullscreen."));
         });
     }
 
@@ -916,7 +922,7 @@ impl LumaApp {
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
-                if dragging_file { "Släpp här" } else { "Dra in en video eller bild hit" },
+                if dragging_file { t("Släpp här", "Drop here") } else { t("Dra in en video eller bild hit", "Drag a video or image here") },
                 egui::FontId::proportional(22.0),
                 Color32::from_gray(if dragging_file { 230 } else { 110 }),
             );
@@ -926,28 +932,32 @@ impl LumaApp {
     }
 }
 
-const SHAPES: [(Shape, &str); 4] = [
-    (Shape::Quad, "Fyrhörn"),
-    (Shape::Triangle, "Triangel"),
-    (Shape::Ellipse, "Ellips"),
-    (Shape::Mesh { cols: 4, rows: 4 }, "Mesh"),
-];
+const SHAPES: [Shape; 4] = [Shape::Quad, Shape::Triangle, Shape::Ellipse, Shape::Mesh { cols: 4, rows: 4 }];
+
+fn shape_label(shape: Shape) -> &'static str {
+    match shape {
+        Shape::Quad => t("Fyrhörn", "Quad"),
+        Shape::Triangle => t("Triangel", "Triangle"),
+        Shape::Ellipse => t("Ellips", "Ellipse"),
+        Shape::Mesh { .. } => t("Mesh", "Mesh"),
+    }
+}
 
 fn shape_hint(shape: Shape) -> &'static str {
     match shape {
-        Shape::Quad => "Fyra hörn, perspektivriktig",
-        Shape::Triangle => "Tre hörn, t.ex. en gavel",
-        Shape::Ellipse => "Rund yta inuti fyra hörn – blir en perspektivriktig ellips",
-        Shape::Mesh { .. } => "Rutnät av punkter för böjda ytor, t.ex. pelare",
+        Shape::Quad => t("Fyra hörn, perspektivriktig", "Four corners, perspective-correct"),
+        Shape::Triangle => t("Tre hörn, t.ex. en gavel", "Three corners, e.g. a gable"),
+        Shape::Ellipse => t("Rund yta inuti fyra hörn – blir en perspektivriktig ellips", "Round surface inside four corners – becomes a perspective-correct ellipse"),
+        Shape::Mesh { .. } => t("Rutnät av punkter för böjda ytor, t.ex. pelare", "Grid of points for curved surfaces, e.g. pillars"),
     }
 }
 
 fn blend_hint(mode: BlendMode) -> &'static str {
     match mode {
-        BlendMode::Normal => "Ytan täcker det som ligger under",
-        BlendMode::Add => "Ljuset adderas – svart blir genomskinligt",
-        BlendMode::Multiply => "Mörkar ner det som ligger under – vitt blir genomskinligt",
-        BlendMode::Screen => "Ljusar upp mjukt – svart blir genomskinligt",
+        BlendMode::Normal => t("Ytan täcker det som ligger under", "The surface covers what is underneath"),
+        BlendMode::Add => t("Ljuset adderas – svart blir genomskinligt", "Light is added – black becomes transparent"),
+        BlendMode::Multiply => t("Mörkar ner det som ligger under – vitt blir genomskinligt", "Darkens what is underneath – white becomes transparent"),
+        BlendMode::Screen => t("Ljusar upp mjukt – svart blir genomskinligt", "Brightens softly – black becomes transparent"),
     }
 }
 
@@ -1009,7 +1019,7 @@ mod tests {
     #[test]
     fn every_shape_roundtrips_through_quad() {
         let corners = vec![[0.1, 0.2], [0.8, 0.2], [0.9, 0.9], [0.2, 0.9]];
-        for (shape, _) in SHAPES {
+        for shape in SHAPES {
             let mut s = surface(corners.clone());
             reshape(&mut s, shape);
             assert_eq!(s.dst_pts.len(), shape.point_count(), "{shape:?}");
