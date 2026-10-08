@@ -1,0 +1,19 @@
+[package]
+name = "lumamap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lumamap"
+path = "src/main.rs"
+
+[dependencies]
+lm-core.workspace = true
+lm-geom.workspace = true
+lm-media.workspace = true
+lm-render.workspace = true
+eframe.workspace = true
+rfd.workspace = true
+log.workspace = true
+env_logger.workspace = true

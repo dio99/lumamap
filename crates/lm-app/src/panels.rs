@@ -1,0 +1,468 @@
+//! Editorns paneler: verktygsrad, media och ytor (vänster), egenskaper (höger)
+//! och förhandsvisningen av projektorn i mitten.
+
+use crate::app::{LumaApp, Pending};
+use crate::canvas::{fit, PtKind, ACCENT};
+use eframe::egui::{self, Color32, RichText, Ui};
+use lm_core::{Command, SourceKind, UNIT_QUAD};
+use std::time::Duration;
+
+const FILES: &[&str] = &[
+    "mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg", "ogv", "wmv", "flv", "ts", "mts", "gif", "png", "jpg",
+    "jpeg", "bmp", "webp", "tif", "tiff",
+];
+
+impl LumaApp {
+    pub fn editor_ui(&mut self, ui: &mut Ui) {
+        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        egui::Panel::left("library").resizable(true).default_size(230.0).show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| self.library(ui));
+        });
+        egui::Panel::right("properties").resizable(true).default_size(290.0).show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| self.properties(ui));
+        });
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(Color32::from_gray(18)))
+            .show(ui, |ui| self.preview(ui));
+    }
+
+    fn toolbar(&mut self, ui: &mut Ui) {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            let mode = if self.show_mode { "✏ Redigera" } else { "▶ Visa" };
+            let mode_btn = egui::Button::new(RichText::new(mode).strong().size(15.0))
+                .fill(if self.show_mode { Color32::from_rgb(40, 110, 50) } else { Color32::from_rgb(30, 90, 140) });
+            if ui.add(mode_btn).on_hover_text("Växla mellan Redigera och Visa (Tab)").clicked() {
+                self.show_mode = !self.show_mode;
+            }
+            ui.separator();
+            if ui.button("➕ Media…").on_hover_text("Lägg till video eller bild (du kan också dra filer hit)").clicked() {
+                if let Some(files) = rfd::FileDialog::new()
+                    .set_title("Lägg till media")
+                    .add_filter("Video och bild", FILES)
+                    .pick_files()
+                {
+                    self.add_files(files, None);
+                }
+            }
+            if ui.button("⬜ Ny yta").on_hover_text("Lägg till en fyrhörnig yta").clicked() {
+                let src = self.selected_source;
+                self.add_surface(src);
+            }
+            ui.separator();
+            if ui.add_enabled(self.history.can_undo(), egui::Button::new("⮪")).on_hover_text("Ångra (Ctrl+Z)").clicked() {
+                self.history.undo(&mut self.project);
+            }
+            if ui.add_enabled(self.history.can_redo(), egui::Button::new("⮫")).on_hover_text("Gör om (Ctrl+Shift+Z)").clicked() {
+                self.history.redo(&mut self.project);
+            }
+            ui.separator();
+            ui.toggle_value(&mut self.opts.output_test, "⊞ Testbild").on_hover_text("Testbild på hela projektorn (T)");
+            ui.toggle_value(&mut self.opts.blackout, "⏹ Svart").on_hover_text("Svart på projektorn (B)");
+            ui.separator();
+            if self.output_open {
+                if ui.button("⛶ Helskärm").on_hover_text("Projektorfönstret i helskärm (F i projektorfönstret)").clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.set_output_fullscreen(&ctx, true);
+                }
+            } else if ui.button("🖵 Öppna projektorfönster").clicked() {
+                self.open_output();
+            }
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.menu_button("☰", |ui| {
+                    if ui.button("Nytt projekt   Ctrl+N").clicked() {
+                        self.request(Pending::New);
+                    }
+                    if ui.button("Öppna…   Ctrl+O").clicked() {
+                        self.request(Pending::Open(None));
+                    }
+                    if ui.button("Spara   Ctrl+S").clicked() {
+                        self.save(false);
+                    }
+                    if ui.button("Spara som…   Ctrl+Shift+S").clicked() {
+                        self.save(true);
+                    }
+                });
+                if ui.button("💾").on_hover_text("Spara (Ctrl+S)").clicked() {
+                    self.save(false);
+                }
+                let name = self
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Namnlöst projekt".into());
+                let star = if self.dirty() { " •" } else { "" };
+                ui.label(RichText::new(format!("{name}{star}")).color(Color32::from_gray(170)));
+            });
+        });
+        ui.add_space(2.0);
+
+        if let Some(path) = self.restore_offer.clone() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Det finns ett osparat projekt från förra gången.").color(Color32::from_rgb(255, 200, 80)));
+                if ui.button("Återställ").clicked() {
+                    self.load(&path);
+                    self.restore_offer = None;
+                }
+                if ui.button("Nej tack").clicked() {
+                    let _ = std::fs::remove_file(&path);
+                    self.restore_offer = None;
+                }
+            });
+            ui.add_space(2.0);
+        }
+    }
+
+    fn status_bar(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            let msg = self
+                .status
+                .as_ref()
+                .filter(|(_, t)| t.elapsed() < Duration::from_secs(6))
+                .map(|(m, _)| m.clone());
+            match msg {
+                Some(m) => ui.label(RichText::new(m).color(ACCENT)),
+                None => ui.label(
+                    RichText::new("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort")
+                        .color(Color32::from_gray(140)),
+                ),
+            };
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(o) = self.project.outputs.first() {
+                    ui.label(RichText::new(format!("{} × {}", o.resolution[0], o.resolution[1])).color(Color32::from_gray(140)));
+                }
+            });
+        });
+    }
+
+    fn library(&mut self, ui: &mut Ui) {
+        ui.add_space(6.0);
+        ui.heading("Media");
+        if self.project.sources.is_empty() {
+            ui.label(RichText::new("Dra in videor eller bilder här.").color(Color32::from_gray(140)));
+        }
+        let mut remove = None;
+        let mut assign = None;
+        for src in self.project.sources.clone() {
+            let icon = match src.kind {
+                SourceKind::Video { .. } => "🎞",
+                SourceKind::Image { .. } => "🖼",
+                SourceKind::Color { .. } => "🎨",
+                SourceKind::TestPattern => "⊞",
+            };
+            let error = self.media.get(src.id).and_then(|m| m.error()).map(str::to_owned);
+            ui.horizontal(|ui| {
+                let selected = self.selected_source == Some(src.id);
+                let mut text = RichText::new(format!("{icon} {}", src.name));
+                if error.is_some() {
+                    text = text.color(Color32::from_rgb(255, 100, 100));
+                }
+                let r = ui.selectable_label(selected, text);
+                let r = match &error {
+                    Some(e) => r.on_hover_text(e),
+                    None => r.on_hover_text("Dubbelklicka för att visa på markerad yta"),
+                };
+                if r.clicked() {
+                    self.selected_source = Some(src.id);
+                }
+                if r.double_clicked() {
+                    assign = Some(src.id);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("🗑").on_hover_text("Ta bort media").clicked() {
+                        remove = Some(src.id);
+                    }
+                });
+            });
+        }
+        if let Some(id) = remove {
+            self.exec(Command::RemoveSource(id), None);
+        }
+        if let Some(sid) = assign {
+            match self.selected.and_then(|id| self.project.surface(id).cloned()) {
+                Some(mut s) => {
+                    s.source = Some(sid);
+                    self.exec(Command::ReplaceSurface(s), None);
+                }
+                None => {
+                    self.add_surface(Some(sid));
+                }
+            }
+        }
+        ui.horizontal(|ui| {
+            if ui.small_button("+ Färg").clicked() {
+                let s = self.project.make_source("Färg", SourceKind::Color { rgba: [1.0, 1.0, 1.0, 1.0] });
+                self.selected_source = Some(s.id);
+                let index = self.project.sources.len();
+                self.exec(Command::AddSource { source: s, index }, None);
+            }
+            if ui.small_button("+ Testbild").clicked() {
+                let s = self.project.make_source("Testbild", SourceKind::TestPattern);
+                self.selected_source = Some(s.id);
+                let index = self.project.sources.len();
+                self.exec(Command::AddSource { source: s, index }, None);
+            }
+        });
+
+        ui.add_space(14.0);
+        ui.heading("Ytor");
+        if self.project.surfaces.is_empty() {
+            ui.label(RichText::new("Inga ytor än. Klicka ⬜ Ny yta.").color(Color32::from_gray(140)));
+        }
+        let n = self.project.surfaces.len();
+        let mut action: Option<Command> = None;
+        // Översta ytan visas först i listan.
+        for (index, s) in self.project.surfaces.clone().into_iter().enumerate().rev() {
+            ui.horizontal(|ui| {
+                let mut visible = s.visible;
+                if ui.checkbox(&mut visible, "").on_hover_text("Synlig").changed() {
+                    let mut ns = s.clone();
+                    ns.visible = visible;
+                    action = Some(Command::ReplaceSurface(ns));
+                }
+                let lock = if s.locked { "🔒 " } else { "" };
+                if ui.selectable_label(self.selected == Some(s.id), format!("{lock}{}", s.name)).clicked() {
+                    self.select(Some(s.id));
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add_enabled(index > 0, egui::Button::new("⏷").small()).on_hover_text("Flytta bakåt").clicked() {
+                        action = Some(Command::MoveSurfaceTo { id: s.id, index: index - 1 });
+                    }
+                    if ui.add_enabled(index + 1 < n, egui::Button::new("⏶").small()).on_hover_text("Flytta framåt").clicked() {
+                        action = Some(Command::MoveSurfaceTo { id: s.id, index: index + 1 });
+                    }
+                });
+            });
+        }
+        if let Some(c) = action {
+            self.exec(c, None);
+        }
+    }
+
+    fn properties(&mut self, ui: &mut Ui) {
+        ui.add_space(6.0);
+        let Some(mut s) = self.selected.and_then(|id| self.project.surface(id).cloned()) else {
+            ui.heading("Egenskaper");
+            ui.label(RichText::new("Markera en yta för att ändra den.").color(Color32::from_gray(140)));
+            ui.add_space(10.0);
+            self.quick_start(ui);
+            return;
+        };
+        let before = s.clone();
+        let mut gesture = None;
+
+        let r = ui.add(egui::TextEdit::singleline(&mut s.name).font(egui::TextStyle::Heading));
+        if r.changed() || r.gained_focus() {
+            gesture = Some(self.field_gesture(&r));
+        }
+        ui.add_space(6.0);
+
+        egui::Grid::new("surface_props").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
+            ui.label("Media");
+            let current = s
+                .source
+                .and_then(|id| self.project.source(id))
+                .map(|src| src.name.clone())
+                .unwrap_or_else(|| "— ingen —".into());
+            egui::ComboBox::from_id_salt("source_pick").selected_text(current).width(170.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut s.source, None, "— ingen —");
+                for src in &self.project.sources {
+                    ui.selectable_value(&mut s.source, Some(src.id), &src.name);
+                }
+            });
+            ui.end_row();
+
+            ui.label("Opacitet");
+            let r = ui.add(egui::Slider::new(&mut s.opacity, 0.0..=1.0).show_value(true));
+            if r.changed() {
+                gesture = Some(self.field_gesture(&r));
+            }
+            ui.end_row();
+
+            ui.label("");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut s.visible, "Synlig");
+                ui.checkbox(&mut s.locked, "Låst");
+            });
+            ui.end_row();
+        });
+
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            let mut test = self.opts.test_surfaces.contains(&s.id);
+            if ui.toggle_value(&mut test, "⊞ Testbild").on_hover_text("Visa testbild på ytan medan du riktar in den").changed() {
+                if test {
+                    self.opts.test_surfaces.insert(s.id);
+                } else {
+                    self.opts.test_surfaces.remove(&s.id);
+                }
+            }
+            if ui.button("⟲ Rak").on_hover_text("Gör ytan till en rak rektangel igen").clicked() {
+                let xs = s.dst_pts.iter().map(|p| p[0]);
+                let ys = s.dst_pts.iter().map(|p| p[1]);
+                let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+                let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+                s.dst_pts = vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+            }
+            if ui.button("⛶ Fyll").on_hover_text("Fyll hela projektorbilden").clicked() {
+                s.dst_pts = UNIT_QUAD.to_vec();
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("🗐 Duplicera").clicked() {
+                let mut copy = self.project.make_quad(s.source);
+                copy.name = format!("{} kopia", s.name);
+                copy.src_pts = s.src_pts.clone();
+                copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
+                copy.opacity = s.opacity;
+                let index = self.project.surfaces.len();
+                let id = copy.id;
+                self.exec(Command::AddSurface { surface: copy, index }, None);
+                self.select(Some(id));
+                return;
+            }
+            if ui.button("🗑 Ta bort").clicked() {
+                self.remove_selected();
+            }
+        });
+
+        if self.project.surface(before.id).is_some() && s != before && self.selected == Some(before.id) {
+            self.exec(Command::ReplaceSurface(s.clone()), gesture);
+        }
+        if self.selected != Some(before.id) {
+            return;
+        }
+
+        // Utsnitt ur källan + uppspelning.
+        if let Some(sid) = s.source {
+            ui.add_space(14.0);
+            ui.heading("Utsnitt ur media");
+            ui.label(RichText::new("Dra hörnen för att välja vilken del som visas.").color(Color32::from_gray(140)));
+            let (tex, size) = self
+                .renderer
+                .source_texture(sid)
+                .map(|(t, s)| (Some(t), s))
+                .unwrap_or((None, [16, 9]));
+            let width = ui.available_width() - 16.0;
+            let aspect = size[0] as f32 / size[1].max(1) as f32;
+            let (outer, _) = ui.allocate_exact_size(egui::vec2(width + 16.0, width / aspect + 16.0), egui::Sense::hover());
+            let rect = fit(outer.shrink(8.0), aspect);
+            ui.painter().rect_filled(rect, 0.0, Color32::from_gray(30));
+            if let Some(tex) = tex {
+                ui.painter().image(
+                    tex,
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::from_gray(200),
+                );
+            }
+            self.canvas(ui, rect, PtKind::Src, "source");
+            if ui.small_button("⟲ Hela bilden").clicked() {
+                self.set_points(s.id, PtKind::Src, UNIT_QUAD.to_vec(), None);
+            }
+            self.transport(ui, sid);
+        }
+    }
+
+    fn transport(&mut self, ui: &mut Ui, sid: lm_core::SourceId) {
+        let Some(src) = self.project.source(sid).cloned() else { return };
+        let SourceKind::Video { path, looping, muted } = &src.kind else { return };
+        ui.add_space(14.0);
+        ui.heading("Uppspelning");
+        let Some(media) = self.media.get_mut(sid) else { return };
+        if let Some(e) = media.error() {
+            ui.colored_label(Color32::from_rgb(255, 100, 100), e);
+            return;
+        }
+        ui.horizontal(|ui| {
+            let label = if media.is_playing() { "⏸ Paus" } else { "▶ Spela" };
+            if ui.button(label).clicked() {
+                if media.is_playing() {
+                    media.pause();
+                } else {
+                    media.play();
+                }
+            }
+            if ui.button("⏮ Början").clicked() {
+                media.seek(0.0);
+            }
+        });
+        if let (Some(pos), Some(dur)) = (media.position(), media.duration()) {
+            let mut t = pos;
+            let r = ui.add(
+                egui::Slider::new(&mut t, 0.0..=dur.max(0.01))
+                    .custom_formatter(|v, _| format!("{}:{:04.1}", (v / 60.0) as u32, v % 60.0))
+                    .show_value(true),
+            );
+            if r.changed() {
+                media.seek(t);
+            }
+        }
+        let (mut l, mut m) = (*looping, *muted);
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            changed |= ui.checkbox(&mut l, "🔁 Loopa").changed();
+            changed |= ui.checkbox(&mut m, "🔇 Ljud av").changed();
+        });
+        if changed {
+            let mut ns = src.clone();
+            ns.kind = SourceKind::Video {
+                path: path.clone(),
+                looping: l,
+                muted: m,
+            };
+            self.exec(Command::ReplaceSource(ns), None);
+        }
+    }
+
+    fn quick_start(&mut self, ui: &mut Ui) {
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(RichText::new("Kom igång").strong());
+            ui.add_space(4.0);
+            ui.label("1. Dra en video eller bild till fönstret.");
+            ui.label("2. Dra ytans fyra hörn så att de passar väggen.");
+            ui.label("3. Tryck ▶ Visa, och F i projektorfönstret för helskärm.");
+        });
+    }
+
+    fn preview(&mut self, ui: &mut Ui) {
+        let Some(out) = self.project.outputs.first().cloned() else { return };
+        let avail = ui.max_rect().shrink(16.0);
+        let aspect = out.resolution[0] as f32 / out.resolution[1].max(1) as f32;
+        let rect = fit(avail, aspect);
+        self.editor_canvas = Some(rect);
+        let painter = ui.painter();
+        painter.rect_filled(rect, 0.0, Color32::BLACK);
+        if let Some(tex) = self.renderer.output_texture(out.id) {
+            painter.image(
+                tex,
+                rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
+        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, Color32::from_gray(70)), egui::StrokeKind::Outside);
+        ui.painter().text(
+            rect.left_top() - egui::vec2(0.0, 4.0),
+            egui::Align2::LEFT_BOTTOM,
+            &out.name,
+            egui::FontId::proportional(12.0),
+            Color32::from_gray(150),
+        );
+
+        let dragging_file = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
+        if self.project.surfaces.is_empty() || dragging_file {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                if dragging_file { "Släpp här" } else { "Dra in en video eller bild hit" },
+                egui::FontId::proportional(22.0),
+                Color32::from_gray(if dragging_file { 230 } else { 110 }),
+            );
+        }
+        self.canvas(ui, rect, PtKind::Dst, "editor");
+    }
+}

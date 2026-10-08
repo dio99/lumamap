@@ -1,0 +1,12 @@
+[package]
+name = "lm-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gstreamer.workspace = true
+gstreamer-app.workspace = true
+gstreamer-video.workspace = true
+image.workspace = true
+log.workspace = true

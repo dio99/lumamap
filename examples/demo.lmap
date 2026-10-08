@@ -1,0 +1,20 @@
+(
+    version: 1,
+    sources: [
+        (id: (2), name: "test", kind: Video(path: "media/test.mp4", looping: true, muted: true)),
+    ],
+    surfaces: [
+        (
+            id: (3),
+            name: "Vägg A",
+            source: Some((2)),
+            output: (1),
+            src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            dst_pts: [(0.15, 0.2), (0.8, 0.1), (0.85, 0.9), (0.1, 0.75)],
+        ),
+    ],
+    outputs: [
+        (id: (1), name: "Projektor 1", resolution: (1920, 1080)),
+    ],
+    next_id: 4,
+)
