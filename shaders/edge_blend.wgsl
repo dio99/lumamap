@@ -9,7 +9,7 @@
 struct EdgeUniform {
     // Bredd som andel av bilden: x = vänster, y = höger, z = topp, w = botten.
     widths: vec4<f32>,
-    // x = gamma
+    // x = gamma, y = svartnivåkompensation
     params: vec4<f32>,
 };
 
@@ -44,4 +44,22 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let linear = ramp(p.x, u.widths.x) * ramp(1.0 - p.x, u.widths.y) * ramp(p.y, u.widths.z) * ramp(1.0 - p.y, u.widths.w);
     let f = pow(linear, 1.0 / max(u.params.x, 0.1));
     return vec4<f32>(f, f, f, 1.0);
+}
+
+// Svartnivåkompensation, ritas additivt efter rampen: lyfter svärtan utanför
+// blandningszonerna (där bara en projektor lyser) med samma mängd som den
+// andra projektorns svärta ger i överlappet. Mjuk övergång vid zonkanten.
+fn outside(d: f32, w: f32) -> f32 {
+    if (w <= 0.0) {
+        return 1.0;
+    }
+    return smoothstep(w, w + 0.01, d);
+}
+
+@fragment
+fn fs_black(in: VsOut) -> @location(0) vec4<f32> {
+    let p = in.uv;
+    let lift = outside(p.x, u.widths.x) * outside(1.0 - p.x, u.widths.y) * outside(p.y, u.widths.z) * outside(1.0 - p.y, u.widths.w);
+    let v = u.params.y * lift;
+    return vec4<f32>(v, v, v, 0.0);
 }

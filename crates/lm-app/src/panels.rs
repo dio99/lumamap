@@ -4,7 +4,7 @@
 use crate::app::{LumaApp, Pending};
 use crate::canvas::{fit, PtKind, ACCENT};
 use eframe::egui::{self, Color32, RichText, Ui};
-use lm_core::{BlendMode, Command, Mask, EDGE_BLEND_MAX, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
+use lm_core::{BlendMode, Command, Mask, BLACK_LEVEL_MAX, EDGE_BLEND_MAX, Pt, Shape, SourceKind, Surface, MESH_MAX, MESH_MIN, UNIT_QUAD};
 use lm_core::i18n::{self, t, Language};
 use std::time::Duration;
 
@@ -956,6 +956,17 @@ impl LumaApp {
             let r = ui
                 .add(egui::Slider::new(&mut e.gamma, 1.0..=3.0).fixed_decimals(1))
                 .on_hover_text(t("Projektorns gamma, oftast 2.2. Justera om överlappet ser ljusare eller mörkare ut.", "The projector's gamma, usually 2.2. Adjust if the overlap looks brighter or darker."));
+            if r.changed() {
+                gesture = Some(self.field_gesture(&r));
+            }
+            ui.end_row();
+            ui.label(t("Svartnivå", "Black level"));
+            let r = ui
+                .add(egui::Slider::new(&mut e.black_level, 0.0..=BLACK_LEVEL_MAX).fixed_decimals(3))
+                .on_hover_text(t(
+                    "Svart blir ljusare där två projektorer överlappar. Höj tills resten av bilden är lika grå som överlappet när allt är svart.",
+                    "Black gets brighter where two projectors overlap. Raise until the rest of the image is as grey as the overlap when everything is black.",
+                ));
             if r.changed() {
                 gesture = Some(self.field_gesture(&r));
             }

@@ -317,9 +317,14 @@ pub struct EdgeBlend {
     pub bottom: f32,
     /// Projektorns gamma (vanligen 2.2). Rampen görs i linjärt ljus och kodas med den.
     pub gamma: f32,
+    /// Svartnivåkompensation (0..0.2): lyfter svärtan utanför överlappet så att
+    /// den blir lika över hela väggen (två projektorers svärta adderas i överlappet).
+    #[serde(default)]
+    pub black_level: f32,
 }
 
 pub const EDGE_BLEND_MAX: f32 = 0.5;
+pub const BLACK_LEVEL_MAX: f32 = 0.2;
 
 impl Default for EdgeBlend {
     fn default() -> Self {
@@ -329,6 +334,7 @@ impl Default for EdgeBlend {
             top: 0.0,
             bottom: 0.0,
             gamma: 2.2,
+            black_level: 0.0,
         }
     }
 }
@@ -516,6 +522,7 @@ impl Project {
             if !(1.0..=4.0).contains(&e.gamma) {
                 e.gamma = 2.2;
             }
+            e.black_level = e.black_level.clamp(0.0, BLACK_LEVEL_MAX);
         }
         let first = self.outputs[0].id;
         let outputs: Vec<OutputId> = self.outputs.iter().map(|o| o.id).collect();

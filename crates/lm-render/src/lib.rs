@@ -407,7 +407,7 @@ impl Renderer {
                 pass.draw(d.vertices.clone(), 0..1);
             }
             if let Some(offset) = edge_offsets.get(&out.id) {
-                self.edge.draw(&mut pass, *offset);
+                self.edge.draw(&mut pass, *offset, out.edge_blend.black_level);
             }
         }
         queue.submit([encoder.finish()]);
