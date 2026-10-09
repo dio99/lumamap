@@ -45,6 +45,9 @@ pub struct Settings {
     /// MIDI-kontroller kopplade till åtgärder.
     #[serde(default)]
     pub midi: Vec<MidiBinding>,
+    /// Tempo för effekterna, slag per minut.
+    #[serde(default = "default_bpm")]
+    pub bpm: f32,
 }
 
 /// En kontroll på en MIDI-enhet.
@@ -92,6 +95,10 @@ pub struct MidiBinding {
     pub action: MidiAction,
 }
 
+fn default_bpm() -> f32 {
+    120.0
+}
+
 fn default_osc_port() -> u16 {
     12345
 }
@@ -102,6 +109,7 @@ impl Default for Settings {
             osc_enabled: true,
             osc_port: default_osc_port(),
             midi: Vec::new(),
+            bpm: default_bpm(),
         }
     }
 }
@@ -236,6 +244,99 @@ pub struct Surface {
     pub blend: BlendMode,
     #[serde(default)]
     pub color: ColorAdjust,
+    #[serde(default)]
+    pub effect: Effect,
+}
+
+/// En animerad effekt på ytan. Går i takt med projektets tempo.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Effect {
+    pub kind: EffectKind,
+    /// Hur mycket, 0..1.
+    pub amount: f32,
+    /// Varv per taktslag (0 = stilla).
+    pub speed: f32,
+    /// Ljudets bas förstärker effekten.
+    #[serde(default)]
+    pub follow_audio: bool,
+}
+
+impl Default for Effect {
+    fn default() -> Self {
+        Effect {
+            kind: EffectKind::None,
+            amount: 0.5,
+            speed: 0.25,
+            follow_audio: false,
+        }
+    }
+}
+
+/// Effekterna. Numreringen används i shadern – lägg bara till nya sist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum EffectKind {
+    #[default]
+    None = 0,
+    Kaleidoscope = 1,
+    Tile = 2,
+    Scroll = 3,
+    Rotate = 4,
+    Pulse = 5,
+    Blur = 6,
+    Invert = 7,
+    ColorCycle = 8,
+    Strobe = 9,
+    Outline = 10,
+}
+
+impl EffectKind {
+    pub const ALL: [EffectKind; 11] = [
+        EffectKind::None,
+        EffectKind::Outline,
+        EffectKind::Kaleidoscope,
+        EffectKind::Tile,
+        EffectKind::Scroll,
+        EffectKind::Rotate,
+        EffectKind::Pulse,
+        EffectKind::ColorCycle,
+        EffectKind::Strobe,
+        EffectKind::Blur,
+        EffectKind::Invert,
+    ];
+
+    pub fn label(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            EffectKind::None => t("Ingen", "None"),
+            EffectKind::Kaleidoscope => t("Kalejdoskop", "Kaleidoscope"),
+            EffectKind::Tile => t("Kakel", "Tiles"),
+            EffectKind::Scroll => t("Rulla", "Scroll"),
+            EffectKind::Rotate => t("Rotera", "Rotate"),
+            EffectKind::Pulse => t("Pulsera", "Pulse"),
+            EffectKind::Blur => t("Oskärpa", "Blur"),
+            EffectKind::Invert => t("Invertera", "Invert"),
+            EffectKind::ColorCycle => t("Färgcykel", "Colour cycle"),
+            EffectKind::Strobe => t("Blinka", "Strobe"),
+            EffectKind::Outline => t("Konturglöd", "Edge glow"),
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            EffectKind::None => "",
+            EffectKind::Kaleidoscope => t("Speglar bilden i tårtbitar runt mitten", "Mirrors the image in slices around the centre"),
+            EffectKind::Tile => t("Upprepar bilden i ett rutnät", "Repeats the image in a grid"),
+            EffectKind::Scroll => t("Bilden glider i sidled och går runt", "The image slides sideways and wraps around"),
+            EffectKind::Rotate => t("Bilden snurrar inne i ytan", "The image spins inside the surface"),
+            EffectKind::Pulse => t("Bilden zoomar in och ut i takt", "The image zooms in and out to the beat"),
+            EffectKind::Blur => t("Mjukar upp bilden", "Softens the image"),
+            EffectKind::Invert => t("Vänder färgerna", "Inverts the colours"),
+            EffectKind::ColorCycle => t("Färgerna vandrar runt färghjulet", "Colours travel around the colour wheel"),
+            EffectKind::Strobe => t("Ytan blinkar i takt", "The surface flashes to the beat"),
+            EffectKind::Outline => t("Bara kanterna lyser, med ett ljus som springer runt", "Only the edges glow, with a light running around"),
+        }
+    }
 }
 
 /// Färgjustering av en yta, t.ex. för att matcha två projektorer eller en färgad vägg.
@@ -531,6 +632,7 @@ impl Project {
             mask: None,
             blend: BlendMode::Normal,
             color: ColorAdjust::default(),
+            effect: Effect::default(),
         }
     }
 

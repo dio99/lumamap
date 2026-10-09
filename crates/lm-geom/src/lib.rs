@@ -279,6 +279,21 @@ pub fn mesh_from_quad(quad: &[Pt; 4], cols: usize, rows: usize) -> Vec<Pt> {
 mod tests {
     use super::*;
 
+    /// Samma avstånd till triangelns kanter som `edge_distance` i surface.wgsl.
+    #[test]
+    fn triangle_edge_distance_matches_corners() {
+        let d = |p: Pt| {
+            let left = (2.0 * p[0] + p[1] - 1.0) / 5f32.sqrt();
+            let right = (1.0 - 2.0 * p[0] + p[1]) / 5f32.sqrt();
+            left.min(right).min(1.0 - p[1])
+        };
+        for c in TRIANGLE_UV {
+            assert!(d(c).abs() < 1e-6, "hörnet {c:?} ligger på kanten");
+        }
+        assert!(d([0.5, 0.7]) > 0.1, "insidan är positiv");
+        assert!(d([0.05, 0.1]) < 0.0, "utanför är negativ");
+    }
+
     #[test]
     fn triangle_quad_roundtrip() {
         let q = [[0.1, 0.2], [0.7, 0.2], [0.8, 0.9], [0.0, 0.9]];

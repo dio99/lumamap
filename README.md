@@ -26,6 +26,9 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **Masks** with soft edges – hide a window or a door, or show only inside a
   shape. Masks stay put on the wall when you adjust the surface.
 - **Blend modes:** normal, add, multiply, screen.
+- **Effects on any surface:** edge glow that follows the surface's shape,
+  kaleidoscope, tiles, scroll, rotate, pulse, colour cycle, strobe, blur and
+  invert – all in time with a global tempo you can tap in.
 - **Several projectors**, each in its own window, with **edge blending** where
   they overlap.
 - **Cues** with fades – store which surfaces are visible, how bright and with

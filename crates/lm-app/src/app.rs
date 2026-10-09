@@ -84,6 +84,11 @@ pub struct LumaApp {
     pub midi_learn: Option<lm_core::MidiAction>,
     pub midi_last: Option<(lm_control::midi::MidiEvent, Instant)>,
     pub midi_window_open: bool,
+    /// För taktslagsuret: när förra bildrutan ritades.
+    last_frame: Instant,
+    /// Senaste trycken på Tap.
+    taps: Vec<Instant>,
+    tap_gesture: Option<(u64, Instant)>,
     pub editor_canvas: Option<egui::Rect>,
 }
 
@@ -137,6 +142,9 @@ impl LumaApp {
             midi_learn: None,
             midi_last: None,
             midi_window_open: false,
+            last_frame: Instant::now(),
+            taps: Vec::new(),
+            tap_gesture: None,
             editor_canvas: None,
         };
 
@@ -325,6 +333,30 @@ impl LumaApp {
                 self.add_surface(Some(sid));
             }
         }
+    }
+
+    /// Tap tempo: tempot blir medelavståndet mellan de senaste trycken, och
+    /// takten läggs på trycket så att effekterna slår i takt.
+    pub fn tap_tempo(&mut self) {
+        let now = Instant::now();
+        self.taps.retain(|t| now.duration_since(*t) < Duration::from_millis(2500));
+        self.taps.push(now);
+        if self.taps.len() > 5 {
+            self.taps.remove(0);
+        }
+        self.opts.beats = self.opts.beats.round();
+        if self.taps.len() < 2 {
+            return;
+        }
+        let span = now.duration_since(self.taps[0]).as_secs_f32() / (self.taps.len() - 1) as f32;
+        let mut settings = self.project.settings.clone();
+        settings.bpm = (60.0 / span).clamp(30.0, 300.0).round();
+        let gesture = match self.tap_gesture {
+            Some((g, at)) if now.duration_since(at) < Duration::from_secs(3) => g,
+            _ => self.new_gesture(),
+        };
+        self.tap_gesture = Some((gesture, now));
+        self.exec(Command::ReplaceSettings(settings), Some(gesture));
     }
 
     // ---------- Filer ----------
@@ -826,6 +858,11 @@ impl eframe::App for LumaApp {
 
         self.poll_osc();
         self.poll_midi();
+        // Taktslagsuret räknar upp i projektets tempo; ändrat tempo ger inga hopp.
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f64();
+        self.last_frame = now;
+        self.opts.beats += dt * self.project.settings.bpm as f64 / 60.0;
         self.tick_fade();
         self.shortcuts(ui);
         self.editor_ui(ui);

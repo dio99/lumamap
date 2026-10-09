@@ -17,7 +17,7 @@ mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 * 16;
+const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 + 16 * 16;
 /// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
 const MESH_SUBDIV: usize = 12;
 
@@ -29,6 +29,7 @@ struct SurfaceUniform {
     params: [f32; 4],
     res: [f32; 4],
     color: [f32; 4],
+    effect: [f32; 4],
     mask: [[f32; 4]; 16],
 }
 
@@ -56,6 +57,7 @@ impl SurfaceUniform {
             .chain(self.params.iter())
             .chain(self.res.iter())
             .chain(self.color.iter())
+            .chain(self.effect.iter())
             .chain(self.mask.iter().flatten());
         for f in floats {
             out.extend_from_slice(&f.to_le_bytes());
@@ -90,6 +92,10 @@ pub struct RenderOptions {
     pub blackout: bool,
     /// Master-nivå för alla ytor (0..1).
     pub master: f32,
+    /// Taktslag sedan start (för effekternas fas).
+    pub beats: f64,
+    /// Ljudets basnivå 0..1 (för effekter som följer ljudet).
+    pub audio: f32,
 }
 
 impl Default for RenderOptions {
@@ -99,6 +105,8 @@ impl Default for RenderOptions {
             output_test: false,
             blackout: false,
             master: 1.0,
+            beats: 0.0,
+            audio: 0.0,
         }
     }
 }
@@ -339,6 +347,7 @@ impl Renderer {
                     let c = &s.color;
                     geo.0.color = [c.brightness, c.contrast, c.gamma.max(0.05), c.saturation];
                     geo.0.res[3] = c.hue.to_radians();
+                    apply_effect(&mut geo.0, s, opts);
                     push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }
@@ -470,8 +479,24 @@ fn surface_uniform(h2: Homography, h: Homography, opacity: f32) -> SurfaceUnifor
         params: [opacity.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
         res: [1.0, 1.0, 0.0, 0.0],
         color: [0.0, 1.0, 1.0, 1.0],
+        effect: [0.0; 4],
         mask: [[0.0; 4]; 16],
     }
+}
+
+fn apply_effect(u: &mut SurfaceUniform, s: &Surface, opts: &RenderOptions) {
+    let e = &s.effect;
+    if e.kind == lm_core::EffectKind::None {
+        return;
+    }
+    let phase = (opts.beats * e.speed as f64).rem_euclid(1.0) as f32;
+    let amount = if e.follow_audio { e.amount * opts.audio * 1.5 } else { e.amount }.clamp(0.0, 1.0);
+    if e.kind == lm_core::EffectKind::ColorCycle {
+        // Ett helt varv runt färghjulet per effektvarv.
+        u.res[3] += phase * std::f32::consts::TAU;
+    }
+    let triangle = if s.shape == Shape::Triangle { 1.0 } else { 0.0 };
+    u.effect = [e.kind as u32 as f32, amount, phase, triangle];
 }
 
 fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2], warp: Option<&Homography>) {

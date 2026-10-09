@@ -71,6 +71,24 @@ impl LumaApp {
             ui.add(egui::Slider::new(&mut self.opts.master, 0.0..=1.0).show_value(false))
                 .on_hover_text(t("Ljusstyrka för alla ytor (sparas inte)", "Brightness of all surfaces (not saved)"));
             ui.separator();
+            let mut bpm = self.project.settings.bpm;
+            let r = ui
+                .add(egui::DragValue::new(&mut bpm).range(30.0..=300.0).speed(0.5).fixed_decimals(0).prefix("♩ "))
+                .on_hover_text(t("Tempo för effekterna (slag per minut)", "Tempo for the effects (beats per minute)"));
+            if r.changed() {
+                let gesture = self.field_gesture(&r);
+                let mut settings = self.project.settings.clone();
+                settings.bpm = bpm;
+                self.exec(Command::ReplaceSettings(settings), Some(gesture));
+            }
+            if ui
+                .button("Tap")
+                .on_hover_text(t("Tryck i takt med musiken för att ställa tempot", "Tap along with the music to set the tempo"))
+                .clicked()
+            {
+                self.tap_tempo();
+            }
+            ui.separator();
             self.output_picker(ui);
             let out = self.current_output;
             if self.output_is_open(out) {
@@ -753,6 +771,7 @@ impl LumaApp {
                 copy.mask = s.mask.clone();
                 copy.blend = s.blend;
                 copy.color = s.color;
+                copy.effect = s.effect;
                 copy.src_pts = s.src_pts.clone();
                 copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
                 copy.opacity = s.opacity;
@@ -792,6 +811,36 @@ impl LumaApp {
                 });
                 if ui.add_enabled(!s.color.is_identity(), egui::Button::new(t("⟲ Återställ färg", "⟲ Reset colour"))).clicked() {
                     s.color = lm_core::ColorAdjust::default();
+                }
+            });
+
+        // Effekt
+        egui::CollapsingHeader::new(t("✨ Effekt", "✨ Effect"))
+            .default_open(s.effect.kind != lm_core::EffectKind::None)
+            .show(ui, |ui| {
+                let e = &mut s.effect;
+                egui::ComboBox::from_id_salt("effect_pick").selected_text(e.kind.label()).width(170.0).show_ui(ui, |ui| {
+                    for kind in lm_core::EffectKind::ALL {
+                        ui.selectable_value(&mut e.kind, kind, kind.label()).on_hover_text(kind.hint());
+                    }
+                });
+                if e.kind != lm_core::EffectKind::None {
+                    egui::Grid::new("effect_params").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                        ui.label(t("Styrka", "Amount"));
+                        let r = ui.add(egui::Slider::new(&mut e.amount, 0.0..=1.0).show_value(false));
+                        if r.changed() {
+                            gesture = Some(self.field_gesture(&r));
+                        }
+                        ui.end_row();
+                        ui.label(t("Fart", "Speed"));
+                        let r = ui
+                            .add(egui::Slider::new(&mut e.speed, 0.0..=2.0).custom_formatter(|v, _| speed_text(v)))
+                            .on_hover_text(t("I takt med tempot i verktygsraden", "In time with the tempo in the toolbar"));
+                        if r.changed() {
+                            gesture = Some(self.field_gesture(&r));
+                        }
+                        ui.end_row();
+                    });
                 }
             });
 
@@ -1175,6 +1224,17 @@ fn shape_label(shape: Shape) -> &'static str {
         Shape::Triangle => t("Triangel", "Triangle"),
         Shape::Ellipse => t("Ellips", "Ellipse"),
         Shape::Mesh { .. } => t("Mesh", "Mesh"),
+    }
+}
+
+/// "1 varv / 4 slag" – effektens fart i förhållande till tempot.
+fn speed_text(v: f64) -> String {
+    if v < 0.01 {
+        t("stilla", "still").into()
+    } else if v < 0.99 {
+        format!("1 {} / {:.0} {}", t("varv", "turn"), 1.0 / v, t("slag", "beats"))
+    } else {
+        format!("{:.1} {} / {}", v, t("varv", "turns"), t("slag", "beat"))
     }
 }
 
