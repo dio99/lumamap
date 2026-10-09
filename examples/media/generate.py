@@ -4,7 +4,7 @@
 Alla videor är procedurgenererade (ingen extern media, inga licensfrågor)
 och loopar sömlöst: animationen är periodisk eller tonas över i sig själv.
 
-Kräver numpy och ffmpeg (med libx264).
+Kräver numpy och ffmpeg (med libx264). Matrix kräver även Pillow.
 
     python3 examples/media/generate.py            # alla
     python3 examples/media/generate.py fire neon  # bara några
@@ -43,16 +43,28 @@ def encode(name, frames, size=(W, H), scale_to=None, crf=24):
         str(OUT / f"{name}.mp4"),
     ]
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    # Kontroll av loopen före kodning: steget sista → första bildrutan ska
+    # vara som ett vanligt steg mellan två bildrutor.
+    first = prev = None
+    steps = []
     for i, f in enumerate(frames):
         if f.dtype != np.uint8:
             f = (np.clip(f, 0, 1) * 255).astype(np.uint8)
+        small = f[::8, ::8].astype(np.float32)
+        if prev is None:
+            first = small
+        else:
+            steps.append(np.abs(small - prev).mean())
+        prev = small
         p.stdin.write(np.ascontiguousarray(f).tobytes())
         if i % FPS == 0:
             print(f"\r{name}: {i // FPS + 1}/{SECONDS} s", end="", flush=True)
     p.stdin.close()
     p.wait()
     size_mb = (OUT / f"{name}.mp4").stat().st_size / 1e6
-    print(f"\r{name}: klar ({size_mb:.1f} MB)        ")
+    seam, typical, worst = np.abs(first - prev).mean(), np.median(steps), max(steps)
+    ok = "ok" if seam <= worst * 1.05 else "HOPP I LOOPEN"
+    print(f"\r{name}: klar ({size_mb:.1f} MB), skarv {seam:.2f} (vanligt steg {typical:.2f}, max {worst:.2f}) {ok}")
 
 
 def box_blur(img, r):
@@ -292,7 +304,283 @@ def neon():
     encode("neon", (frame(i) for i in range(N)))
 
 
-VIDEOS = {"space": space, "fire": fire, "plasma": plasma, "aurora": aurora, "neon": neon}
+def water():
+    """Vattenkrusningar: ljusbrytningar (kaustik) på botten, med ringar där
+    droppar slår ned. Kaustiken bygger på en känd shader-teknik där en punkt
+    vrids om flera gånger; alla hastigheter är heltal så att den loopar."""
+    rng = np.random.default_rng(5)
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    px0 = xs / H * TAU * 0.9 - 250.0
+    py0 = ys / H * TAU * 0.9 - 250.0
+    # Droppar: läge och tidpunkt (andel av loopen). Upprepas varje loop.
+    drops = [(rng.uniform(0.1, 0.9) * W, rng.uniform(0.15, 0.85) * H, k / 7 + rng.uniform(0, 0.08)) for k in range(7)]
+    base = palette([(0, (0.0, 0.08, 0.16)), (1, (0.0, 0.22, 0.32))], ys / H)
+
+    def frame(i):
+        a = TAU * i / N
+        ring = np.zeros((H, W), np.float32)
+        for dx, dy, t0 in drops:
+            age = ((i / N - t0) % 1.0) * SECONDS
+            if age > 4.0:
+                continue
+            r = np.hypot(xs - dx, ys - dy) / H
+            front = 0.05 + age * 0.22
+            env = np.exp(-((r - front) / 0.05) ** 2) * np.exp(-age * 0.9) * (r < front + 0.1)
+            ring += np.sin((r - front) * 90) * env
+        px = px0 + ring * 0.25
+        py = py0 + ring * 0.25
+        ix, iy = px.copy(), py.copy()
+        c = np.ones_like(px)
+        inten = 0.005
+        for n, speed in enumerate((1, -2, 1, 2, -1)):
+            t = a * speed + n * 1.7
+            ix, iy = px + np.cos(t - ix) + np.sin(t + iy), py + np.sin(t - iy) + np.cos(t + ix)
+            c += 1.0 / np.hypot(px / (np.sin(ix + t) / inten), py / (np.cos(iy + t) / inten))
+        c /= 5.0
+        c = 1.17 - np.power(np.abs(c), 1.4)
+        light = np.clip(np.abs(c) ** 8, 0, 1.5)
+        img = base * (1 + 0.25 * ring[..., None]) + light[..., None] * np.array([0.55, 0.9, 1.0])
+        return glow(img, 0.3, 6)
+
+    encode("water", (frame(i) for i in range(N)), crf=26)
+
+
+def rain():
+    """Regn på ett fönster: suddiga stadsljus bakom glaset, droppar som
+    bryter ljuset (visar bakgrunden upp och ned) och droppar som rinner ned."""
+    rng = np.random.default_rng(9)
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+
+    def lights(seed_rng, count):
+        img = palette([(0, (0.01, 0.02, 0.06)), (1, (0.04, 0.03, 0.08))], ys / H)
+        cols = np.array([[1.0, 0.6, 0.2], [1.0, 0.25, 0.15], [0.9, 0.9, 1.0], [0.2, 0.8, 0.9], [1.0, 0.4, 0.7], [1.0, 0.85, 0.4]])
+        for _ in range(count):
+            cx, cy = seed_rng.uniform(0, W), seed_rng.uniform(H * 0.25, H * 1.05)
+            r = seed_rng.uniform(18, 70)
+            d = np.hypot(xs - cx, ys - cy)
+            disc = np.clip((r - d) / 3, 0, 1) * (0.55 + 0.45 * np.clip(d / r, 0, 1))
+            img += disc[..., None] * cols[seed_rng.integers(len(cols))] * seed_rng.uniform(0.15, 0.5)
+        return img
+
+    layer_a, layer_b = lights(rng, 45), lights(rng, 45)
+    sharp_a, sharp_b = blur(layer_a, 2), blur(layer_b, 2)
+    soft_a, soft_b = blur(layer_a, 9), blur(layer_b, 9)
+
+    still = [(rng.uniform(0, W), rng.uniform(0, H), 2 + 10 * rng.uniform(0, 1) ** 3, rng.uniform(0, 1)) for _ in range(650)]  # mest små, några stora
+    running = [(rng.uniform(30, W - 30), rng.uniform(0, 1), int(rng.integers(1, 4)), rng.uniform(9, 15), rng.uniform(0, TAU))
+               for _ in range(18)]
+
+    def draw_drop(img, sharp, cx, cy, r, stretch=1.0, alpha=1.0):
+        x0, x1 = int(max(cx - r - 2, 0)), int(min(cx + r + 2, W))
+        y0, y1 = int(max(cy - r * stretch - 2, 0)), int(min(cy + r * stretch + 2, H))
+        if x0 >= x1 or y0 >= y1:
+            return
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        dx, dy = (xx - cx) / r, (yy - cy) / (r * stretch)
+        d2 = dx * dx + dy * dy
+        inside = np.clip((1 - d2) * r / 1.5, 0, 1) * alpha
+        # Droppen är en lins: bakgrunden syns förminskad och upp och ned.
+        sx = np.clip(cx - dx * r * 4, 0, W - 1).astype(int)
+        sy = np.clip(cy - dy * r * 4 * stretch, 0, H - 1).astype(int)
+        rim = np.clip((d2 - 0.55) * 2.2, 0, 1)[..., None]  # mörk kant där ljuset bryts bort
+        spot = np.clip(0.6 - ((dx + 0.3) ** 2 + (dy + 0.35) ** 2) * 9, 0, 1)[..., None]  # högdager
+        lens = sharp[sy, sx] * (1.6 - 0.4 * d2[..., None]) * (1 - 0.85 * rim) + spot * 0.8
+        region = img[y0:y1, x0:x1]
+        img[y0:y1, x0:x1] = region * (1 - inside[..., None]) + lens * inside[..., None]
+
+    def frame(i):
+        t = i / N
+        w = 0.5 + 0.5 * np.sin(TAU * t)
+        soft = soft_a * w + soft_b * (1 - w)
+        sharp = sharp_a * w + sharp_b * (1 - w)
+        img = soft.copy()
+        span = H + 200
+        # Rinnande droppar lämnar en klar strimma i glaset ovanför sig.
+        heads = []
+        for x0, y0, laps, r, ph in running:
+            cy = (y0 + laps * t) % 1.0 * span - 100
+            cx = x0 + 5 * np.sin(TAU * t * 3 + ph) + 3 * np.sin(cy / 37)
+            heads.append((cx, cy, r))
+            top = int(max(cy - 260, 0)); bottom = int(min(cy, H))
+            if bottom > top:
+                yy = np.arange(top, bottom)
+                fade = np.clip((yy - (cy - 260)) / 260, 0, 1)[:, None]
+                xx = np.arange(int(max(cx - r * 0.5, 0)), int(min(cx + r * 0.5, W)))
+                if len(xx):
+                    img[top:bottom, xx[0]:xx[-1] + 1] = (img[top:bottom, xx[0]:xx[-1] + 1] * (1 - 0.7 * fade[..., None])
+                                                         + sharp[top:bottom, xx[0]:xx[-1] + 1] * 0.7 * fade[..., None])
+        for cx, cy, r, ph in still:
+            life = (t + ph) % 1.0
+            alpha = np.clip(min(life, 0.85 - life) * 12, 0, 1) if life < 0.85 else 0.0
+            if alpha > 0:
+                draw_drop(img, sharp, cx, cy, r, 1.0, alpha)
+        for cx, cy, r in heads:
+            draw_drop(img, sharp, cx, cy, r, 1.25)
+        vignette = 1 - 0.35 * (((xs - W / 2) / W) ** 2 + ((ys - H / 2) / H) ** 2)[..., None] * 2
+        return img * vignette
+
+    encode("rain", (frame(i) for i in range(N)), crf=26)
+
+
+def matrix():
+    """Matrix: gröna tecken som rinner nedåt i kolumner. Katakana om
+    typsnittet finns, annars siffror och bokstäver."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    rng = np.random.default_rng(1)
+    cell = 24
+    cols, rows = W // cell, H // cell
+    chars = [chr(c) for c in range(0x30A2, 0x30F3)] + list("0123456789Z:=*+<>")
+    font = None
+    for path in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"):
+        try:
+            font = ImageFont.truetype(path, cell - 2)
+            break
+        except OSError:
+            pass
+    if font is None:
+        chars = list("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:.=*+-<>|")
+        font = ImageFont.load_default(cell - 2)
+    atlas = np.zeros((len(chars), cell, cell), np.float32)
+    for k, ch in enumerate(chars):
+        im = Image.new("L", (cell, cell))
+        ImageDraw.Draw(im).text((cell / 2, cell / 2), ch, fill=255, font=font, anchor="mm")
+        atlas[k] = np.asarray(im, np.float32)[:, ::-1] / 255  # spegelvänt, som i filmen
+    glyphs = rng.integers(0, len(chars), (rows, cols))
+    flicker = rng.random((rows, cols)) < 0.06
+    # Två strömmar per kolumn; hastighet = antal varv per loop.
+    trail = 22
+    streams = [(c, rng.uniform(0, 1), int(rng.integers(1, 4))) for c in range(cols) for _ in range(2)]
+    green = np.array([0.15, 1.0, 0.35])
+
+    def frame(i):
+        t = i / N
+        inten = np.zeros((rows, cols), np.float32)
+        head = np.zeros((rows, cols), np.float32)
+        r = np.arange(rows)
+        for c, off, laps in streams:
+            pos = (off + laps * t) % 1.0 * (rows + trail) - 1
+            d = pos - r
+            on = (d >= 0) & (d < trail)
+            inten[on, c] = np.maximum(inten[on, c], (1 - d[on] / trail) ** 1.6)
+            h = (d >= 0) & (d < 1)
+            head[h, c] = 1.0
+        # Några tecken byter form, 60 gånger per loop.
+        g = glyphs.copy()
+        step = (i * 60) // N
+        g[flicker] = (glyphs[flicker] * 7 + step * 13) % len(chars)
+        tiles = atlas[g]  # rows × cols × cell × cell
+        mask = tiles.transpose(0, 2, 1, 3).reshape(rows * cell, cols * cell)
+        level = np.repeat(np.repeat(inten, cell, 0), cell, 1)
+        hd = np.repeat(np.repeat(head, cell, 0), cell, 1)
+        img = mask[..., None] * (level[..., None] * green + hd[..., None] * np.array([0.9, 1.0, 0.9]) * 1.4)
+        img = np.pad(img, ((0, H - img.shape[0]), (0, W - img.shape[1]), (0, 0)))
+        return glow(img, 0.8, 8)
+
+    encode("matrix", (frame(i) for i in range(N)), crf=26)
+
+
+def lightgrid():
+    """Ljusnät för fasader: fönsterkarmar som lyser, ljuspulser som springer
+    längs linjerna och fönster som tänds i diagonala vågor med skiftande färg.
+    Rutnätet passar att mappa på en husfasad (ställ in med mesh eller fyrhörn)."""
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    ncol, nrow = 10, 6
+    mx, my = W * 0.04, H * 0.06
+    gx = np.linspace(mx, W - mx, ncol + 1)
+    gy = np.linspace(my, H - my, nrow + 1)
+    dvx = np.min(np.abs(xs[..., None] - gx), axis=-1)
+    dhy = np.min(np.abs(ys[..., None] - gy), axis=-1)
+    inside_x = (xs > gx[0] - 2) & (xs < gx[-1] + 2)
+    inside_y = (ys > gy[0] - 2) & (ys < gy[-1] + 2)
+    vline = np.exp(-(dvx / 2.0) ** 2) * inside_y
+    hline = np.exp(-(dhy / 2.0) ** 2) * inside_x
+    col = np.clip(np.searchsorted(gx, xs) - 1, 0, ncol - 1)
+    row = np.clip(np.searchsorted(gy, ys) - 1, 0, nrow - 1)
+    cw, ch = gx[1] - gx[0], gy[1] - gy[0]
+    # Fönsterruta: lite innanför karmen.
+    pane = (dvx > 7) & (dhy > 7) & inside_x & inside_y
+    lx = (xs - gx[0]) / (gx[-1] - gx[0])
+    ly = (ys - gy[0]) / (gy[-1] - gy[0])
+
+    def frame(i):
+        a = TAU * i / N
+        # Ljuspulser: en per linje, olika fart (hela varv per loop).
+        pulse_h = np.zeros((H, W), np.float32)
+        for j in range(nrow + 1):
+            p = ((j * 0.37 + (1 + j % 3) * i / N) % 1.0)
+            d = np.abs(((lx - p) + 0.5) % 1.0 - 0.5)
+            pulse_h += np.exp(-(d / 0.035) ** 2) * (np.abs(ys - gy[j]) < 3)
+        pulse_v = np.zeros((H, W), np.float32)
+        for k in range(ncol + 1):
+            p = ((k * 0.61 + (1 + k % 2) * i / N) % 1.0)
+            d = np.abs(((ly - p) + 0.5) % 1.0 - 0.5)
+            pulse_v += np.exp(-(d / 0.06) ** 2) * (np.abs(xs - gx[k]) < 3)
+        frame_lines = np.maximum(vline, hline)
+        # Fönstren: diagonal våg, två gånger per loop, färgen vandrar ett varv.
+        phase = (col + row * 0.7) / (ncol + nrow)
+        wave = np.maximum(0, np.cos(2 * a - phase * TAU * 1.5)) ** 2.5
+        hue = (i / N + phase * 0.5) % 1.0
+        rgb = 0.5 + 0.5 * np.cos(TAU * (hue[..., None] + np.array([0.0, 0.33, 0.67])))
+        img = pane[..., None] * wave[..., None] * rgb * 0.55
+        img += frame_lines[..., None] * np.array([0.25, 0.45, 0.6])
+        img += np.clip(pulse_h + pulse_v, 0, 1.5)[..., None] * np.array([0.9, 0.95, 1.0])
+        return glow(img, 1.0, 10)
+
+    encode("lightgrid", (frame(i) for i in range(N)))
+
+
+def galaxy():
+    """Galax: spiralgalax med två armar som roterar. Armarna är exakt
+    symmetriska, så ett halvt varv per loop gör den sömlös."""
+    rng = np.random.default_rng(42)
+    # Hälften av stjärnorna; den andra hälften är samma vridna ett halvt varv.
+    n_arm, n_bulge = 45000, 12000
+    r = rng.power(0.55, n_arm) * 0.95 + 0.04
+    pitch = np.tan(np.radians(16))
+    theta = np.log(r) / pitch + rng.normal(0, 0.16 + 0.12 * r, n_arm)
+    r = r * rng.normal(1, 0.04, n_arm)
+    rb = np.abs(rng.normal(0, 0.12, n_bulge))
+    tb = rng.uniform(0, TAU, n_bulge)
+    radius = np.concatenate([r, rb])
+    angle = np.concatenate([theta, tb])
+    colour = np.concatenate([
+        np.where(rng.random(n_arm)[:, None] < 0.03, [[1.0, 0.45, 0.7]], [[0.7, 0.8, 1.0]]) * rng.uniform(0.3, 1.0, (n_arm, 1)),
+        np.array([[1.0, 0.85, 0.6]]) * rng.uniform(0.3, 1.0, (n_bulge, 1)),
+    ])
+    radius = np.concatenate([radius, radius])
+    angle = np.concatenate([angle, angle + np.pi])
+    colour = np.concatenate([colour, colour])
+    tilt, turn = 0.55, np.radians(-25)
+    scale = H * 0.85
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    background = np.zeros((H, W, 3), np.float32)
+    k = 1500
+    background[rng.integers(0, H, k), rng.integers(0, W, k)] = rng.uniform(0.1, 0.7, (k, 1))
+    core = np.exp(-(((xs - W / 2) / (H * 0.07)) ** 2 + ((ys - H / 2) / (H * 0.05)) ** 2))[..., None] * np.array([1.0, 0.8, 0.55])
+
+    def frame(i):
+        phi = np.pi * i / N  # ett halvt varv per loop
+        a = angle + phi
+        x, y = radius * np.cos(a), radius * np.sin(a) * tilt
+        x, y = x * np.cos(turn) - y * np.sin(turn), x * np.sin(turn) + y * np.cos(turn)
+        px = (W / 2 + x * scale).astype(int)
+        py = (H / 2 + y * scale).astype(int)
+        ok = (px >= 0) & (px < W) & (py >= 0) & (py < H)
+        img = background.copy()
+        np.add.at(img, (py[ok], px[ok]), colour[ok] * 0.35)
+        # Lätt mjukning: tiotusentals gnistrande punkter går nästan inte att komprimera.
+        img = box_blur(img, 1) * 1.6
+        img = glow(img, 1.6, 6) + core * 0.9
+        return glow(img, 0.5, 24)
+
+    encode("galaxy", (frame(i) for i in range(N)), crf=28)
+
+
+VIDEOS = {
+    "space": space, "fire": fire, "plasma": plasma, "aurora": aurora, "neon": neon,
+    "water": water, "rain": rain, "matrix": matrix, "lightgrid": lightgrid, "galaxy": galaxy,
+}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(VIDEOS)

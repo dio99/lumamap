@@ -93,10 +93,15 @@ free to use in your own shows:
 | `plasma.mp4` | Slowly flowing rainbow colours |
 | `aurora.mp4` | Northern lights over mountains |
 | `neon.mp4` | Synthwave grid floor under a striped sun |
+| `water.mp4` | Light rippling on the bottom of a pool, with drops landing |
+| `rain.mp4` | Raindrops on a window in front of blurred city lights |
+| `matrix.mp4` | Falling green "Matrix" characters |
+| `lightgrid.mp4` | Glowing window frames with light pulses – made for building facades |
+| `galaxy.mp4` | A rotating spiral galaxy |
 
 They are generated from code, so there are no licensing questions and you
 can change them. Edit `examples/media/generate.py` and run it (needs numpy
-and ffmpeg):
+and ffmpeg; the Matrix video also needs Pillow):
 
 ```bash
 python3 examples/media/generate.py            # all videos
