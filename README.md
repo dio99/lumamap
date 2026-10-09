@@ -20,7 +20,9 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **Surfaces:** quad (perspective-correct, no diagonal seam), triangle,
   ellipse and curved mesh (smooth spline through a grid of points).
 - **Sources:** video files, images, webcams (V4L2), network streams
-  (RTSP, SRT, UDP, HTTP, … via GStreamer), solid colours and a test pattern.
+  (RTSP, SRT, UDP, HTTP, … via GStreamer), solid colours, a test pattern and
+  live patterns drawn on the GPU (gradient, stripes, plasma, tunnel, clouds,
+  rings) – no video files needed.
   Each source is decoded once, however many surfaces show it.
 - **Crop** any part of the source onto a surface.
 - **Masks** with soft edges – hide a window or a door, or show only inside a

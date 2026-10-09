@@ -256,6 +256,7 @@ impl LumaApp {
                 SourceKind::TestPattern => "⊞",
                 SourceKind::Camera { .. } => "📷",
                 SourceKind::Stream { .. } => "📡",
+                SourceKind::Generator { .. } => "✨",
             };
             let error = self.media.get(src.id).and_then(|m| m.error()).map(str::to_owned);
             ui.horizontal(|ui| {
@@ -310,6 +311,16 @@ impl LumaApp {
                 self.exec(Command::AddSource { source: s, index }, None);
             }
         });
+        ui.menu_button(t("+ Mönster ⏷", "+ Pattern ⏷"), |ui| {
+            for pattern in lm_core::Pattern::ALL {
+                if ui.button(format!("✨ {}", pattern.label())).clicked() {
+                    let kind = SourceKind::Generator { pattern, colors: pattern.default_colors(), speed: 0.25 };
+                    self.add_source_shown(pattern.label(), kind);
+                }
+            }
+        })
+        .response
+        .on_hover_text(t("Rörligt mönster som ritas direkt – ingen videofil behövs", "Moving pattern drawn live – no video file needed"));
         ui.horizontal(|ui| {
             let r = ui.menu_button(t("+ Kamera ⏷", "+ Camera ⏷"), |ui| {
                 let cameras = self.cameras.get_or_insert_with(lm_media::list_cameras).clone();
@@ -989,6 +1000,55 @@ impl LumaApp {
 
     fn transport(&mut self, ui: &mut Ui, sid: lm_core::SourceId) {
         let Some(src) = self.project.source(sid).cloned() else { return };
+        if let SourceKind::Generator { pattern, colors, speed } = src.kind {
+            ui.add_space(14.0);
+            ui.heading(t("Mönster", "Pattern"));
+            let (mut p, mut c, mut sp) = (pattern, colors, speed);
+            let mut gesture = None;
+            egui::Grid::new("pattern_props").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+                ui.label(t("Mönster", "Pattern"));
+                egui::ComboBox::from_id_salt("pattern_pick").selected_text(p.label()).show_ui(ui, |ui| {
+                    for option in lm_core::Pattern::ALL {
+                        ui.selectable_value(&mut p, option, option.label());
+                    }
+                });
+                ui.end_row();
+                ui.label(t("Färger", "Colours"));
+                ui.horizontal(|ui| {
+                    for colour in &mut c {
+                        let r = ui.color_edit_button_rgb(colour);
+                        if r.changed() {
+                            gesture = Some(self.field_gesture(&r));
+                        }
+                    }
+                    if ui.small_button("⟲").on_hover_text(t("Mönstrets egna färger", "The pattern's own colours")).clicked() {
+                        c = p.default_colors();
+                    }
+                });
+                ui.end_row();
+                ui.label(t("Fart", "Speed"));
+                let r = ui.add(egui::Slider::new(&mut sp, 0.0..=2.0).custom_formatter(|v, _| speed_text(v)));
+                if r.changed() {
+                    gesture = Some(self.field_gesture(&r));
+                }
+                ui.end_row();
+            });
+            if p != pattern {
+                // Nytt mönster får sina egna färger, om färgerna inte ändrats.
+                if c == pattern.default_colors() {
+                    c = p.default_colors();
+                }
+            }
+            if (p, c, sp) != (pattern, colors, speed) {
+                let mut ns = src.clone();
+                ns.kind = SourceKind::Generator { pattern: p, colors: c, speed: sp };
+                if ns.name == pattern.label() {
+                    ns.name = p.label().to_string();
+                }
+                self.exec(Command::ReplaceSource(ns), gesture);
+            }
+            return;
+        }
         if let SourceKind::Color { rgba } = src.kind {
             ui.add_space(14.0);
             ui.horizontal(|ui| {

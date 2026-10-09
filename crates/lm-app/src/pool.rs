@@ -28,20 +28,23 @@ fn open(kind: &SourceKind) -> Box<dyn MediaSource> {
         SourceKind::TestPattern => Box::new(StillSource::test_pattern()),
         SourceKind::Camera { device } => Box::new(VideoSource::camera(device)),
         SourceKind::Stream { uri, muted } => Box::new(VideoSource::stream(uri, *muted)),
+        SourceKind::Generator { .. } => unreachable!("mönster ritas av renderaren"),
     }
 }
 
 impl MediaPool {
     /// Skapar, uppdaterar och tar bort mediekällor så att de matchar projektet.
     pub fn sync(&mut self, project: &Project, renderer: &mut lm_render::Renderer, egui: &mut egui_wgpu::Renderer) {
+        // Mönsterkällor ritas av renderaren och har ingen media här.
+        let is_media = |kind: &SourceKind| !matches!(kind, SourceKind::Generator { .. });
         self.items.retain(|id, _| {
-            let keep = project.source(*id).is_some();
+            let keep = project.source(*id).is_some_and(|s| is_media(&s.kind));
             if !keep {
                 renderer.remove_source(egui, *id);
             }
             keep
         });
-        for src in &project.sources {
+        for src in project.sources.iter().filter(|s| is_media(&s.kind)) {
             match self.items.get_mut(&src.id) {
                 Some(e) if e.kind == src.kind => {}
                 Some(e) => match (&e.kind, &src.kind) {

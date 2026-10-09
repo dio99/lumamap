@@ -164,12 +164,63 @@ pub enum SourceKind {
     Camera {
         device: String,
     },
+    /// Mönster som ritas av grafikkortet varje bildruta.
+    Generator {
+        pattern: Pattern,
+        colors: [[f32; 3]; 2],
+        /// Varv per taktslag.
+        #[serde(default = "quarter")]
+        speed: f32,
+    },
     /// Nätverksström eller annan URI som GStreamer förstår (rtsp://, srt://, udp://, http://…).
     Stream {
         uri: String,
         #[serde(default)]
         muted: bool,
     },
+}
+
+fn quarter() -> f32 {
+    0.25
+}
+
+/// Mönstren. Numreringen används i shadern – lägg bara till nya sist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Pattern {
+    Gradient = 0,
+    Stripes = 1,
+    Plasma = 2,
+    Tunnel = 3,
+    Clouds = 4,
+    Rings = 5,
+}
+
+impl Pattern {
+    pub const ALL: [Pattern; 6] = [Pattern::Gradient, Pattern::Stripes, Pattern::Plasma, Pattern::Tunnel, Pattern::Clouds, Pattern::Rings];
+
+    pub fn label(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            Pattern::Gradient => t("Gradient", "Gradient"),
+            Pattern::Stripes => t("Ränder", "Stripes"),
+            Pattern::Plasma => t("Plasma", "Plasma"),
+            Pattern::Tunnel => t("Tunnel", "Tunnel"),
+            Pattern::Clouds => t("Moln", "Clouds"),
+            Pattern::Rings => t("Ringar", "Rings"),
+        }
+    }
+
+    /// Färger som passar mönstret från början.
+    pub fn default_colors(self) -> [[f32; 3]; 2] {
+        match self {
+            Pattern::Gradient => [[1.0, 0.25, 0.6], [0.15, 0.6, 1.0]],
+            Pattern::Stripes => [[0.02, 0.02, 0.05], [0.2, 0.9, 1.0]],
+            Pattern::Plasma => [[0.55, 0.1, 0.9], [1.0, 0.65, 0.1]],
+            Pattern::Tunnel => [[0.05, 0.0, 0.15], [1.0, 0.3, 0.8]],
+            Pattern::Clouds => [[0.02, 0.05, 0.15], [0.6, 0.85, 1.0]],
+            Pattern::Rings => [[0.0, 0.0, 0.0], [1.0, 0.85, 0.3]],
+        }
+    }
 }
 
 fn yes() -> bool {

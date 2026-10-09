@@ -3,7 +3,7 @@
 
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::util::DeviceExt;
-use lm_core::{BlendMode, Mask, OutputId, Project, Shape, SourceId, Surface, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS, UNIT_QUAD};
+use lm_core::{BlendMode, Mask, SourceKind, OutputId, Project, Shape, SourceId, Surface, SurfaceId, MASK_MAX_POINTS, MASK_MIN_POINTS, UNIT_QUAD};
 use lm_geom::Homography;
 use lm_media::FrameView;
 use std::collections::{HashMap, HashSet};
@@ -13,10 +13,13 @@ use egui::TextureId;
 pub use egui_wgpu;
 
 mod edge;
+mod generator;
 mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
+/// Upplösning för mönsterkällor.
+const GENERATOR_SIZE: [u32; 2] = [1280, 720];
 const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 + 16 * 16;
 /// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
 const MESH_SUBDIV: usize = 12;
@@ -128,6 +131,8 @@ pub struct Renderer {
     outputs: HashMap<OutputId, GpuOutput>,
     edge: edge::EdgePass,
     yuv: yuv::YuvConverter,
+    generator: generator::GeneratorPass,
+    generators: HashMap<SourceId, generator::GeneratorState>,
 }
 
 impl Renderer {
@@ -253,6 +258,8 @@ impl Renderer {
             outputs: HashMap::new(),
             edge: edge::EdgePass::new(device, FORMAT, MSAA),
             yuv: yuv::YuvConverter::new(device, FORMAT),
+            generator: generator::GeneratorPass::new(device, FORMAT),
+            generators: HashMap::new(),
         }
     }
 
@@ -296,6 +303,47 @@ impl Renderer {
         self.outputs.get(&id).map(|o| o.egui_id)
     }
 
+    /// Ritar alla mönsterkällor till sina texturer.
+    fn generate(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        egui: &mut egui_wgpu::Renderer,
+        project: &Project,
+        opts: &RenderOptions,
+    ) {
+        let gens: Vec<_> = project
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::Generator { pattern, colors, speed } => Some((s.id, *pattern, *colors, *speed)),
+                _ => None,
+            })
+            .collect();
+        // Borttagna (eller ändrade) mönsterkällor: släpp texturen.
+        let gone: Vec<SourceId> = self.generators.keys().filter(|id| !gens.iter().any(|g| g.0 == **id)).copied().collect();
+        for id in gone {
+            self.generators.remove(&id);
+            self.remove_source(egui, id);
+        }
+        if gens.is_empty() {
+            return;
+        }
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("generators") });
+        for (id, pattern, colors, speed) in gens {
+            if self.sources.get(&id).map(|t| t.size) != Some(GENERATOR_SIZE) {
+                let reuse = self.sources.remove(&id).map(|t| t.egui_id);
+                let tex = make_texture(device, &self.tex_layout, &self.sampler, egui, GENERATOR_SIZE, reuse);
+                self.sources.insert(id, tex);
+            }
+            let state = self.generators.entry(id).or_insert_with(|| self.generator.make_state(device));
+            // Tiden går runt efter 1000 varv så att f32 räcker även i dygnslånga installationer.
+            let time = (opts.beats * speed as f64).rem_euclid(1000.0) as f32;
+            self.generator.draw(queue, &mut encoder, state, &self.sources[&id].texture, pattern as u32, time, colors);
+        }
+        queue.submit([encoder.finish()]);
+    }
+
     /// Renderar alla utgångar i projektet till sina offscreen-texturer.
     pub fn render(
         &mut self,
@@ -305,6 +353,7 @@ impl Renderer {
         project: &Project,
         opts: &RenderOptions,
     ) {
+        self.generate(device, queue, egui, project, opts);
         for out in &project.outputs {
             let size = [out.resolution[0].max(16), out.resolution[1].max(16)];
             if self.outputs.get(&out.id).map(|o| o.size) != Some(size) {
@@ -767,6 +816,7 @@ mod tests {
             ("surface.wgsl", include_str!("../../../shaders/surface.wgsl")),
             ("edge_blend.wgsl", include_str!("../../../shaders/edge_blend.wgsl")),
             ("yuv.wgsl", include_str!("../../../shaders/yuv.wgsl")),
+            ("generator.wgsl", include_str!("../../../shaders/generator.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(name)));
             naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default())
