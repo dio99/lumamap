@@ -17,7 +17,7 @@ mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 * 16;
+const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 * 16;
 /// Antal trianglar per meshcell och riktning – tillräckligt för mjuka kurvor.
 const MESH_SUBDIV: usize = 12;
 
@@ -28,6 +28,7 @@ struct SurfaceUniform {
     h2: [[f32; 4]; 3],
     params: [f32; 4],
     res: [f32; 4],
+    color: [f32; 4],
     mask: [[f32; 4]; 16],
 }
 
@@ -54,6 +55,7 @@ impl SurfaceUniform {
             .chain(self.h2.iter().flatten())
             .chain(self.params.iter())
             .chain(self.res.iter())
+            .chain(self.color.iter())
             .chain(self.mask.iter().flatten());
         for f in floats {
             out.extend_from_slice(&f.to_le_bytes());
@@ -332,6 +334,9 @@ impl Renderer {
                 if let Some(mut geo) = surface_geometry(s, test) {
                     apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution);
                     geo.0.params[0] *= opts.master.clamp(0.0, 1.0);
+                    let c = &s.color;
+                    geo.0.color = [c.brightness, c.contrast, c.gamma.max(0.05), c.saturation];
+                    geo.0.res[3] = c.hue.to_radians();
                     push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }
@@ -462,6 +467,7 @@ fn surface_uniform(h2: Homography, h: Homography, opacity: f32) -> SurfaceUnifor
         h2: h2.to_gpu(),
         params: [opacity.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
         res: [1.0, 1.0, 0.0, 0.0],
+        color: [0.0, 1.0, 1.0, 1.0],
         mask: [[0.0; 4]; 16],
     }
 }

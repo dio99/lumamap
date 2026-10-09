@@ -16,8 +16,10 @@ struct SurfaceUniform {
     h2: mat3x3<f32>,
     // x = opacitet, y = antal maskpunkter (0 = ingen mask), z = mjuk kant (px), w = 1 om inverterad
     params: vec4<f32>,
-    // xy = utgångens upplösning i pixlar, z = 1 för ellips
+    // xy = utgångens upplösning i pixlar, z = 1 för ellips, w = nyansvridning (radianer)
     res: vec4<f32>,
+    // Färgjustering: x = ljusstyrka, y = kontrast, z = gamma, w = mättnad
+    color: vec4<f32>,
     // Maskpunkter, två per vec4 (xy, zw), normaliserade.
     mask: array<vec4<f32>, 16>,
 };
@@ -84,6 +86,18 @@ fn mask_alpha(pos: vec2<f32>) -> f32 {
     return clamp(-d / f + 0.5 / f, 0.0, 1.0);
 }
 
+// Samma beräkning som `ColorAdjust::apply` i lm-core (testas där).
+fn adjust(c: vec3<f32>) -> vec3<f32> {
+    var rgb = pow(max((c - 0.5) * u.color.y + 0.5 + u.color.x, vec3<f32>(0.0)), vec3<f32>(1.0 / u.color.z));
+    let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    rgb = mix(vec3<f32>(luma), rgb, u.color.w);
+    let k = vec3<f32>(0.57735027);
+    let s = sin(u.res.w);
+    let co = cos(u.res.w);
+    rgb = rgb * co + cross(k, rgb) * s + k * dot(k, rgb) * (1.0 - co);
+    return clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let q2 = u.h2 * vec3<f32>(in.p, 1.0);
@@ -98,5 +112,5 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let w = max(fwidth(r), 1e-4);
     let ellipse = select(1.0, 1.0 - smoothstep(1.0 - w, 1.0 + w, r), u.res.z > 0.5);
     let a = c.a * u.params.x * inside * ellipse * mask_alpha(in.pos);
-    return vec4<f32>(c.rgb * a, a);
+    return vec4<f32>(adjust(c.rgb) * a, a);
 }

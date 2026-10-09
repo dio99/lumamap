@@ -182,6 +182,54 @@ pub struct Surface {
     pub mask: Option<Mask>,
     #[serde(default)]
     pub blend: BlendMode,
+    #[serde(default)]
+    pub color: ColorAdjust,
+}
+
+/// Färgjustering av en yta, t.ex. för att matcha två projektorer eller en färgad vägg.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ColorAdjust {
+    /// −1..1, 0 = oförändrad.
+    pub brightness: f32,
+    /// 0..2, 1 = oförändrad.
+    pub contrast: f32,
+    /// 0.2..3, 1 = oförändrad.
+    pub gamma: f32,
+    /// 0..2, 1 = oförändrad, 0 = gråskala.
+    pub saturation: f32,
+    /// Nyansvridning i grader, −180..180.
+    pub hue: f32,
+}
+
+impl Default for ColorAdjust {
+    fn default() -> Self {
+        ColorAdjust {
+            brightness: 0.0,
+            contrast: 1.0,
+            gamma: 1.0,
+            saturation: 1.0,
+            hue: 0.0,
+        }
+    }
+}
+
+impl ColorAdjust {
+    pub fn is_identity(&self) -> bool {
+        *self == ColorAdjust::default()
+    }
+
+    /// Samma beräkning som i `surface.wgsl` (för tester och förhandsvisning).
+    pub fn apply(&self, rgb: [f32; 3]) -> [f32; 3] {
+        let mut c = rgb.map(|v| ((v - 0.5) * self.contrast + 0.5 + self.brightness).max(0.0).powf(1.0 / self.gamma));
+        let luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        c = c.map(|v| luma + (v - luma) * self.saturation);
+        // Vrid färgen runt gråaxeln (Rodrigues).
+        let (s, co) = self.hue.to_radians().sin_cos();
+        let k = 1.0 / 3f32.sqrt();
+        let dot = k * (c[0] + c[1] + c[2]);
+        let cross = [k * (c[2] - c[1]), k * (c[0] - c[2]), k * (c[1] - c[0])];
+        [0, 1, 2].map(|i| (c[i] * co + cross[i] * s + k * dot * (1.0 - co)).clamp(0.0, 1.0))
+    }
 }
 
 /// Hur ytan blandas med det som ligger under.
@@ -411,6 +459,7 @@ impl Project {
             locked: false,
             mask: None,
             blend: BlendMode::Normal,
+            color: ColorAdjust::default(),
         }
     }
 
@@ -588,6 +637,21 @@ mod tests {
             assert!((sum - 1.0).abs() < 1e-5, "t={t}: {sum}");
         }
         assert_eq!(a.linear_factor(0.5, 0.5), 1.0);
+    }
+
+    #[test]
+    fn color_adjust() {
+        let id = ColorAdjust::default();
+        let same = id.apply([0.2, 0.5, 0.8]);
+        assert!(same.iter().zip([0.2, 0.5, 0.8]).all(|(a, b)| (a - b).abs() < 1e-5), "{same:?}");
+        let grey = ColorAdjust { saturation: 0.0, ..id };
+        let g = grey.apply([1.0, 0.0, 0.0]);
+        assert!((g[0] - g[1]).abs() < 1e-6 && (g[1] - g[2]).abs() < 1e-6);
+        // 120° vrider rött till grönt.
+        let turned = ColorAdjust { hue: 120.0, ..id }.apply([1.0, 0.0, 0.0]);
+        assert!(turned[1] > 0.99 && turned[0] < 0.01 && turned[2] < 0.01, "{turned:?}");
+        let brighter = ColorAdjust { brightness: 0.2, ..id }.apply([0.5, 0.5, 0.5]);
+        assert!((brighter[0] - 0.7).abs() < 1e-6);
     }
 
     #[test]

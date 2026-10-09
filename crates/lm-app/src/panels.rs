@@ -611,6 +611,7 @@ impl LumaApp {
                 copy.shape = s.shape;
                 copy.mask = s.mask.clone();
                 copy.blend = s.blend;
+                copy.color = s.color;
                 copy.src_pts = s.src_pts.clone();
                 copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
                 copy.opacity = s.opacity;
@@ -624,6 +625,34 @@ impl LumaApp {
                 self.remove_selected();
             }
         });
+
+        // Färg
+        ui.add_space(8.0);
+        egui::CollapsingHeader::new(t("🎨 Färg", "🎨 Colour"))
+            .default_open(!s.color.is_identity())
+            .show(ui, |ui| {
+                egui::Grid::new("color_adjust").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    let c = &mut s.color;
+                    let rows: [(&str, &mut f32, std::ops::RangeInclusive<f32>); 5] = [
+                        (t("Ljusstyrka", "Brightness"), &mut c.brightness, -1.0..=1.0),
+                        (t("Kontrast", "Contrast"), &mut c.contrast, 0.0..=2.0),
+                        (t("Gamma", "Gamma"), &mut c.gamma, 0.2..=3.0),
+                        (t("Mättnad", "Saturation"), &mut c.saturation, 0.0..=2.0),
+                        (t("Nyans", "Hue"), &mut c.hue, -180.0..=180.0),
+                    ];
+                    for (label, value, range) in rows {
+                        ui.label(label);
+                        let r = ui.add(egui::Slider::new(value, range).fixed_decimals(2));
+                        if r.changed() {
+                            gesture = Some(self.field_gesture(&r));
+                        }
+                        ui.end_row();
+                    }
+                });
+                if ui.add_enabled(!s.color.is_identity(), egui::Button::new(t("⟲ Återställ färg", "⟲ Reset colour"))).clicked() {
+                    s.color = lm_core::ColorAdjust::default();
+                }
+            });
 
         // Mask
         ui.add_space(14.0);
@@ -770,6 +799,22 @@ impl LumaApp {
 
     fn transport(&mut self, ui: &mut Ui, sid: lm_core::SourceId) {
         let Some(src) = self.project.source(sid).cloned() else { return };
+        if let SourceKind::Color { rgba } = src.kind {
+            ui.add_space(14.0);
+            ui.horizontal(|ui| {
+                ui.label(t("Färg", "Colour"));
+                let mut c = egui::Rgba::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
+                let r = egui::color_picker::color_edit_button_rgba(ui, &mut c, egui::color_picker::Alpha::OnlyBlend);
+                if r.changed() {
+                    let gesture = self.field_gesture(&r);
+                    let mut ns = src.clone();
+                    let [red, green, blue, alpha] = c.to_rgba_unmultiplied();
+                    ns.kind = SourceKind::Color { rgba: [red, green, blue, alpha] };
+                    self.exec(Command::ReplaceSource(ns), Some(gesture));
+                }
+            });
+            return;
+        }
         if matches!(src.kind, SourceKind::Camera { .. } | SourceKind::Stream { .. }) {
             self.live_controls(ui, &src);
             return;
