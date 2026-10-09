@@ -1,3 +1,4 @@
 target/
 *.lmap.autosave
 /packaging/appimage/tools/
+/.flatpak-builder/

@@ -1,0 +1,51 @@
+# Flatpak för LumaMap.
+#
+#   python3 packaging/flatpak/cargo-sources.py      # efter ändrad Cargo.lock
+#   flatpak run org.flatpak.Builder --user --install --force-clean \
+#       target/flatpak packaging/flatpak/io.github.dio99.LumaMap.yml
+#   flatpak run io.github.dio99.LumaMap
+id: io.github.dio99.LumaMap
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lumamap
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU, webbkameror (V4L2) och MIDI-enheter.
+  - --device=all
+  # OSC och nätverksströmmar.
+  - --share=network
+  - --socket=pulseaudio
+  # Projekt pekar på media bredvid sig; filväljarens portal ger bara åtkomst
+  # till den valda filen, så media på hemkatalogen och USB-minnen behövs.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/lumamap/cargo
+    CARGO_NET_OFFLINE: 'true'
+modules:
+  - name: lumamap
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked
+      - install -Dm755 target/release/lumamap /app/bin/lumamap
+      - install -Dm644 packaging/linux/io.github.dio99.LumaMap.desktop /app/share/applications/io.github.dio99.LumaMap.desktop
+      - install -Dm644 packaging/linux/io.github.dio99.LumaMap.svg /app/share/icons/hicolor/scalable/apps/io.github.dio99.LumaMap.svg
+      - install -Dm644 packaging/linux/io.github.dio99.LumaMap.metainfo.xml /app/share/metainfo/io.github.dio99.LumaMap.metainfo.xml
+      - install -Dm644 packaging/linux/io.github.dio99.LumaMap.mime.xml /app/share/mime/packages/io.github.dio99.LumaMap.xml
+      - mkdir -p /app/share/lumamap && cp -r examples /app/share/lumamap/
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - packaging/appimage/tools
+          - .git
+      - cargo-sources.json

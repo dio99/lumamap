@@ -293,14 +293,27 @@ huvudtråden – exakt samma väg som musen.
 
 ## 12. Färdplan
 
-| Version | Innehåll |
-|---------|----------|
-| **v0.1 – MVP** | Ett editorfönster + en utgång, quad-ytor, video/bild, dra hörn, ångra, spara/öppna, Visa-läge, testbild. |
-| **v0.2** | Flera utgångar/projektorer, mesh-warp, masker, triangel/ellips, blend-lägen. |
-| **v0.3** | Edge blending, OSC, cue-lista, kamera- och strömkällor, `--play`-läge. |
-| **v0.4** | AppImage/Flatpak, NV12-shader, zero-copy, MIDI. |
-| **v1.0** | Stabilitet, dokumentation, exempelprojekt. |
-| Senare | Kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire. |
+| Version | Innehåll | Status |
+|---------|----------|--------|
+| **v0.1 – MVP** | Ett editorfönster + en utgång, quad-ytor, video/bild, dra hörn, ångra, spara/öppna, Visa-läge, testbild. | ✅ |
+| **v0.2** | Flera utgångar/projektorer, mesh-warp, masker, triangel/ellips, blend-lägen. | ✅ |
+| **v0.3** | Edge blending, OSC, cue-lista, kamera- och strömkällor, `--play`-läge. | ✅ |
+| **v0.4** | AppImage/Flatpak, NV12-shader, zero-copy, MIDI. | ✅ utom zero-copy (se nedan) |
+| **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
+| Senare | Kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
+
+Utöver planen har också tillkommit: färgjustering per yta, keystone per
+utgång, uppspelningshastighet, svartnivåkompensation, "Samla projekt",
+svenskt och engelskt gränssnitt samt tio procedurgenererade exempelvideor.
+
+**Zero-copy** (DMA-BUF från VA-API/NVDEC direkt in i Vulkan) är flyttad till
+"Senare": wgpu saknar stöd för att importera externt minne, så det kräver
+egen Vulkan-kod per drivrutin. Efter NV12-uppladdningen är vinsten liten –
+4K-video tar ca 26 % av en kärna.
+
+**Stabilitet** testas utan fönster med
+`cargo run --release -p lm-render --example soak -- examples/showcase.lmap 1800`,
+som spelar och renderar i 30 minuter och skriver ut minnesanvändningen.
 
 ---
 
