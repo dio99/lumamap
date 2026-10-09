@@ -83,6 +83,9 @@ triangle, space on a curved mesh pillar, aurora in an ellipse and a plasma
 "window" with a mask and screen blending, over a neon floor. It has four cues;
 press **Enter** to step through them.
 
+`examples/gallery.lmap` shows each example video full screen, one cue per
+video – press **Enter** to flip through them on your projector.
+
 `examples/media/` contains seamless 12-second loops (1280×720) that you are
 free to use in your own shows:
 

@@ -535,6 +535,18 @@ mod tests {
     }
 
     #[test]
+    fn gallery_project_loads() {
+        let p = Project::from_ron(include_str!("../../../examples/gallery.lmap")).unwrap();
+        assert_eq!(p.cues.len(), 10);
+        assert_eq!(p.surfaces.iter().filter(|s| s.visible).count(), 1);
+        // Varje video som galleriet pekar på finns.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        for s in &p.sources {
+            assert!(dir.join(s.kind.path().unwrap()).exists(), "{}", s.name);
+        }
+    }
+
+    #[test]
     fn showcase_project_loads() {
         let p = Project::from_ron(include_str!("../../../examples/showcase.lmap")).unwrap();
         assert_eq!(p.surfaces.len(), 5);
