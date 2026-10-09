@@ -877,6 +877,25 @@ impl LumaApp {
         ui.label(RichText::new(format!("{} × {} px", o.resolution[0], o.resolution[1])).color(Color32::from_gray(140)));
 
         ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Keystone").strong());
+            if ui
+                .toggle_value(&mut self.keystone_edit, t("✏ Justera", "✏ Adjust"))
+                .on_hover_text(t(
+                    "Dra projektorbildens fyra hörn tills den är rak på väggen",
+                    "Drag the four corners of the projector image until it is square on the wall",
+                ))
+                .changed()
+            {
+                self.selected_point = None;
+                self.mask_edit = false;
+            }
+            if ui.add_enabled(o.keystone != UNIT_QUAD, egui::Button::new(t("⟲ Nollställ", "⟲ Reset"))).clicked() {
+                o.keystone = UNIT_QUAD;
+            }
+        });
+
+        ui.add_space(8.0);
         ui.label(RichText::new(t("Kantblandning", "Edge blending")).strong())
             .on_hover_text(t("Där två projektorer överlappar tonas bilden ut mot kanten så att överlappet inte blir dubbelt så ljust.", "Where two projectors overlap, the image fades out towards the edge so the overlap isn't twice as bright."));
         egui::Grid::new("edge_blend").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {

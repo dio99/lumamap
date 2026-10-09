@@ -289,6 +289,14 @@ pub struct Output {
     pub fullscreen: bool,
     #[serde(default)]
     pub edge_blend: EdgeBlend,
+    /// Hörnkorrigering för hela utgången (övre vänster, övre höger, nedre
+    /// höger, nedre vänster). Rätar upp bilden från en snett ställd projektor.
+    #[serde(default = "unit_quad")]
+    pub keystone: [Pt; 4],
+}
+
+fn unit_quad() -> [Pt; 4] {
+    UNIT_QUAD
 }
 
 /// Mjuk övergång mot kanterna där två projektorer överlappar, så att
@@ -393,6 +401,7 @@ impl Project {
             window_pos: None,
             fullscreen: false,
             edge_blend: EdgeBlend::default(),
+            keystone: UNIT_QUAD,
         }
     }
 

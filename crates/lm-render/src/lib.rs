@@ -320,8 +320,10 @@ impl Renderer {
             if opts.blackout {
                 continue;
             }
+            let keystone = (out.keystone != UNIT_QUAD).then(|| Homography::from_points(&UNIT_QUAD, &out.keystone)).flatten();
+            let warp = keystone.as_ref();
             if opts.output_test {
-                let geo = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0, false).unwrap();
+                let Some(geo) = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0, false, warp) else { continue };
                 push_draw(&mut draws, &mut vertices, out.id, None, BlendMode::Normal, geo);
                 continue;
             }
@@ -331,8 +333,8 @@ impl Renderer {
                 if !test && tex.is_none_or(|id| !self.sources.contains_key(&id)) {
                     continue;
                 }
-                if let Some(mut geo) = surface_geometry(s, test) {
-                    apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution);
+                if let Some(mut geo) = surface_geometry(s, test, warp) {
+                    apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution, warp);
                     geo.0.params[0] *= opts.master.clamp(0.0, 1.0);
                     let c = &s.color;
                     geo.0.color = [c.brightness, c.contrast, c.gamma.max(0.05), c.saturation];
@@ -472,12 +474,14 @@ fn surface_uniform(h2: Homography, h: Homography, opacity: f32) -> SurfaceUnifor
     }
 }
 
-fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2]) {
+fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2], warp: Option<&Homography>) {
     u.res[0] = resolution[0].max(1) as f32;
     u.res[1] = resolution[1].max(1) as f32;
     let Some(m) = mask.filter(|m| m.points.len() >= MASK_MIN_POINTS) else { return };
     let pts = &m.points[..m.points.len().min(MASK_MAX_POINTS)];
     for (i, p) in pts.iter().enumerate() {
+        // En polygon förblir en polygon genom en homografi.
+        let p = warp_pt(warp, *p);
         u.mask[i / 2][(i % 2) * 2] = p[0];
         u.mask[i / 2][(i % 2) * 2 + 1] = p[1];
     }
@@ -487,14 +491,20 @@ fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2])
 }
 
 /// Uniform och trianglar för en yta. `test` = visa testbilden över hela ytan.
-fn surface_geometry(s: &Surface, test: bool) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+/// `warp`: utgångens keystone (enhetskvadrat → hörn), eller `None`.
+fn surface_geometry(s: &Surface, test: bool, warp: Option<&Homography>) -> Option<(SurfaceUniform, Vec<Vertex>)> {
     let src = if test { UNIT_QUAD } else { lm_geom::quad(&s.src_pts)? };
     match s.shape {
-        Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false),
-        Shape::Ellipse => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, true),
-        Shape::Triangle => triangle_geometry(s.dst_pts.get(..3)?.try_into().ok()?, &src, s.opacity),
-        Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity),
+        Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false, warp),
+        Shape::Ellipse => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, true, warp),
+        Shape::Triangle => triangle_geometry(s.dst_pts.get(..3)?.try_into().ok()?, &src, s.opacity, warp),
+        Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity, warp),
     }
+}
+
+/// Punkten genom keystone-förvrängningen.
+fn warp_pt(warp: Option<&Homography>, p: [f32; 2]) -> [f32; 2] {
+    warp.and_then(|h| h.apply(p)).unwrap_or(p)
 }
 
 /// Fyrhörn (eller ellips inskriven i den): två trianglar, texturen följer
@@ -504,7 +514,11 @@ fn quad_geometry(
     src: &[[f32; 2]; 4],
     opacity: f32,
     ellipse: bool,
+    warp: Option<&Homography>,
 ) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    // Hörnen förvrängs först; homografin räknas från de förvrängda hörnen så
+    // att bilden förblir perspektivriktig även med keystone.
+    let dst = &dst.map(|p| warp_pt(warp, p));
     let h2 = Homography::from_points(dst, &UNIT_QUAD)?;
     let h = Homography::from_points(&UNIT_QUAD, src)?;
     let mut u = surface_uniform(h2, h, opacity);
@@ -514,11 +528,23 @@ fn quad_geometry(
 }
 
 /// Triangel: hörnen hämtar motsvarande triangel ur källans utsnitt.
-fn triangle_geometry(dst: &[[f32; 2]; 3], src: &[[f32; 2]; 4], opacity: f32) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+/// Texturen räknas per pixel ur skärmpositionen (som för fyrhörn), så att
+/// triangeln förblir rätt även med keystone.
+fn triangle_geometry(
+    dst: &[[f32; 2]; 3],
+    src: &[[f32; 2]; 4],
+    opacity: f32,
+    warp: Option<&Homography>,
+) -> Option<(SurfaceUniform, Vec<Vertex>)> {
     let h = Homography::from_points(&UNIT_QUAD, src)?;
     let uv = lm_geom::TRIANGLE_UV;
-    let verts = (0..3).map(|i| [dst[i][0], dst[i][1], uv[i][0], uv[i][1]]).collect();
-    Some((surface_uniform(Homography::IDENTITY, h, opacity), verts))
+    // En fjärde punkt (tyngdpunkten) behövs för att bestämma homografin.
+    let centre = |p: &[[f32; 2]; 3]| [(p[0][0] + p[1][0] + p[2][0]) / 3.0, (p[0][1] + p[1][1] + p[2][1]) / 3.0];
+    let params = [uv[0], uv[1], uv[2], centre(&uv)];
+    let screen = [dst[0], dst[1], dst[2], centre(dst)].map(|p| warp_pt(warp, p));
+    let h2 = Homography::from_points(&screen, &params)?;
+    let verts = (0..3).map(|i| [screen[i][0], screen[i][1], screen[i][0], screen[i][1]]).collect();
+    Some((surface_uniform(h2, h, opacity), verts))
 }
 
 /// Mesh: tätt rutnät av trianglar längs splineytan, texturen följer (u, v).
@@ -528,6 +554,7 @@ fn mesh_geometry(
     rows: usize,
     src: &[[f32; 2]; 4],
     opacity: f32,
+    warp: Option<&Homography>,
 ) -> Option<(SurfaceUniform, Vec<Vertex>)> {
     if cols < 2 || rows < 2 || pts.len() != cols * rows {
         return None;
@@ -536,7 +563,7 @@ fn mesh_geometry(
     let (nu, nv) = ((cols - 1) * MESH_SUBDIV + 1, (rows - 1) * MESH_SUBDIV + 1);
     let grid = lm_geom::mesh_grid(pts, cols, rows, nu, nv);
     let vertex = |i: usize, j: usize| {
-        let p = grid[j * nu + i];
+        let p = warp_pt(warp, grid[j * nu + i]);
         [p[0], p[1], i as f32 / (nu - 1) as f32, j as f32 / (nv - 1) as f32]
     };
     let mut out = Vec::with_capacity((nu - 1) * (nv - 1) * 6);

@@ -40,6 +40,9 @@ pub struct LumaApp {
     pub drag: Option<Drag>,
     /// Vyerna redigerar markerad ytas mask i stället för ytorna.
     pub mask_edit: bool,
+    /// Vyerna redigerar utgångens keystone-hörn.
+    pub keystone_edit: bool,
+    pub keystone_drag: Option<crate::canvas::KeystoneDrag>,
     next_gesture: u64,
     field_gesture: Option<(egui::Id, u64)>,
 
@@ -98,6 +101,8 @@ impl LumaApp {
             selected_source: None,
             drag: None,
             mask_edit: false,
+            keystone_edit: false,
+            keystone_drag: None,
             next_gesture: 0,
             field_gesture: None,
             show_mode: false,
@@ -357,6 +362,8 @@ impl LumaApp {
         self.selected_source = None;
         self.drag = None;
         self.mask_edit = false;
+        self.keystone_edit = false;
+        self.keystone_drag = None;
         self.current_cue = None;
         self.selected_cue = None;
         self.fade = None;
@@ -794,7 +801,7 @@ impl LumaApp {
         if !rect.contains(pos) {
             return None;
         }
-        let p = [(pos.x - rect.min.x) / rect.width(), (pos.y - rect.min.y) / rect.height()];
+        let p = self.view(rect, PtKind::Dst(self.current_output)).norm(pos);
         self.project
             .surfaces
             .iter()
