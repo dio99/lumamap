@@ -424,6 +424,36 @@ impl LumaApp {
         }
     }
 
+    /// Kopierar projektet och all media till en mapp (för att flytta till
+    /// showdatorn) och fortsätter sedan arbeta i den samlade kopian.
+    pub fn collect_project(&mut self) {
+        let Some(dir) = rfd::FileDialog::new()
+            .set_title(t("Välj en mapp för det samlade projektet", "Choose a folder for the collected project"))
+            .pick_folder()
+        else {
+            return;
+        };
+        let name = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| t("projekt.lmap", "project.lmap").into());
+        match lm_core::collect::collect(&self.project, &dir, &name) {
+            Ok(c) => {
+                self.load(&c.project_file);
+                self.notify(format!(
+                    "{} {} {} {}",
+                    t("Samlade", "Collected"),
+                    c.copied,
+                    t("mediefiler i", "media files in"),
+                    dir.display()
+                ));
+            }
+            Err(e) => self.notify(format!("{}: {e}", t("Kunde inte samla projektet", "Could not collect the project"))),
+        }
+    }
+
     fn autosave(&mut self) {
         if self.autosave_at.elapsed() < AUTOSAVE_EVERY {
             return;

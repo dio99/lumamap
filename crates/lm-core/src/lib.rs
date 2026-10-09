@@ -1,6 +1,7 @@
 //! LumaMap kärna: datamodell, kommandon och ångra-historik. Ingen GPU, ingen video.
 
 pub mod command;
+pub mod collect;
 pub mod cue;
 pub mod i18n;
 pub mod model;

@@ -96,6 +96,16 @@ impl LumaApp {
                     if ui.button(t("Spara som…   Ctrl+Shift+S", "Save as…   Ctrl+Shift+S")).clicked() {
                         self.save(true);
                     }
+                    if ui
+                        .button(t("📦 Samla projekt…", "📦 Collect project…"))
+                        .on_hover_text(t(
+                            "Kopiera projektet och all media till en mapp, t.ex. för att flytta till showdatorn",
+                            "Copy the project and all its media into one folder, e.g. to move it to the show computer",
+                        ))
+                        .clicked()
+                    {
+                        self.collect_project();
+                    }
                     ui.separator();
                     if ui.button(t("OSC-fjärrstyrning…", "OSC remote control…")).clicked() {
                         self.osc_window_open = true;
@@ -332,7 +342,18 @@ impl LumaApp {
                     action = Some(Command::ReplaceSurface(ns));
                 }
                 let lock = if s.locked { "🔒 " } else { "" };
-                if ui.selectable_label(self.selected == Some(s.id), format!("{lock}{}", s.name)).clicked() {
+                // Källan går inte att spela (fil saknas, ström tappad …): ytan är svart.
+                let broken = s.source.and_then(|id| self.media.get(id)).and_then(|m| m.error()).map(str::to_owned);
+                let mut text = RichText::new(format!("{}{lock}{}", if broken.is_some() { "⚠ " } else { "" }, s.name));
+                if broken.is_some() {
+                    text = text.color(Color32::from_rgb(255, 120, 100));
+                }
+                let r = ui.selectable_label(self.selected == Some(s.id), text);
+                let r = match &broken {
+                    Some(e) => r.on_hover_text(format!("{}: {e}", t("Media fungerar inte", "Media is not working"))),
+                    None => r,
+                };
+                if r.clicked() {
                     self.select(Some(s.id));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

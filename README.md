@@ -66,7 +66,9 @@ The binary ends up in `target/release/lumamap`.
 4. Press **▶ Show** (or **Tab**) to hide the handles.
 
 Use **⊞ Test pattern** while aligning. Save with **Ctrl+S**; projects are
-`.lmap` files with media paths relative to the project file.
+`.lmap` files with media paths relative to the project file. To move a show
+to another computer, use ☰ → **Collect project…**: it copies the project and
+every media file it uses into one folder.
 
 To start a show directly, for example from autostart:
 
