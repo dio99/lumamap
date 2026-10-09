@@ -8,5 +8,5 @@ pub mod midi;
 pub mod model;
 
 pub use command::{Command, History};
-pub use cue::{cue_start, fade_frame, FadeStep};
+pub use cue::{cue_start, fade_frame, CueFade, FadeStep, LampFade};
 pub use model::*;

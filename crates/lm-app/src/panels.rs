@@ -170,6 +170,9 @@ impl LumaApp {
                     if ui.button("🎹 MIDI…").clicked() {
                         self.midi_window_open = true;
                     }
+                    if ui.button(t("💡 Ljus (DMX)…", "💡 Lights (DMX)…")).clicked() {
+                        self.dmx_window_open = true;
+                    }
                     ui.separator();
                     ui.menu_button("🌐 Language / Språk", |ui| {
                         for lang in Language::ALL {
@@ -699,6 +702,103 @@ impl LumaApp {
             let mut settings = self.project.settings.clone();
             settings.midi.remove(i);
             self.exec(Command::ReplaceSettings(settings), None);
+        }
+    }
+
+    pub fn dmx_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.dmx_window_open;
+        let mut settings = self.project.settings.clone();
+        let mut lamps = self.project.lamps.clone();
+        let mut gesture = None;
+        egui::Window::new(t("💡 Ljus (DMX)", "💡 Lights (DMX)")).open(&mut open).default_width(560.0).show(ctx, |ui| {
+            let a = &mut settings.artnet;
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut a.enabled, t("Skicka Art-Net till", "Send Art-Net to"));
+                ui.add(egui::TextEdit::singleline(&mut a.target).desired_width(120.0))
+                    .on_hover_text(t("Nodens IP-adress, eller 255.255.255.255 för alla på nätverket", "The node's IP address, or 255.255.255.255 for everyone on the network"));
+                ui.label(t("universum", "universe"));
+                ui.add(egui::DragValue::new(&mut a.universe).range(0..=32767));
+            });
+            if let (true, Some(e)) = (a.enabled, &self.dmx_error) {
+                ui.colored_label(Color32::from_rgb(255, 120, 100), e);
+            }
+            ui.add_space(8.0);
+            if lamps.is_empty() {
+                ui.label(RichText::new(t(
+                    "Inga lampor än. Lägg till en och ange vilken DMX-kanal den börjar på.",
+                    "No lamps yet. Add one and enter the DMX channel it starts at.",
+                )).color(Color32::from_gray(150)));
+            }
+            let mut remove = None;
+            let sources: Vec<(lm_core::SourceId, String)> = self.project.sources.iter().map(|s| (s.id, s.name.clone())).collect();
+            egui::Grid::new("lamps").num_columns(6).spacing([8.0, 6.0]).striped(true).show(ui, |ui| {
+                if !lamps.is_empty() {
+                    for h in [t("Namn", "Name"), t("Kanal", "Channel"), t("Nivå", "Level"), t("Färg", "Colour"), t("Färg från", "Colour from"), ""] {
+                        ui.label(RichText::new(h).color(Color32::from_gray(150)));
+                    }
+                    ui.end_row();
+                }
+                for (i, l) in lamps.iter_mut().enumerate() {
+                    let r = ui.add(egui::TextEdit::singleline(&mut l.name).desired_width(90.0));
+                    if r.changed() {
+                        gesture = Some(self.field_gesture(&r));
+                    }
+                    ui.add(egui::DragValue::new(&mut l.address).range(1..=512))
+                        .on_hover_text(format!("{} {}–{}", l.kind.label(), l.address, l.address as usize + l.kind.channels() - 1));
+                    let r = ui.add(egui::Slider::new(&mut l.level, 0.0..=1.0).show_value(false));
+                    if r.changed() {
+                        gesture = Some(self.field_gesture(&r));
+                    }
+                    if l.kind == lm_core::LampKind::Dimmer {
+                        ui.label("—");
+                    } else {
+                        ui.add_enabled_ui(l.follow.is_none(), |ui| {
+                            let r = ui.color_edit_button_rgb(&mut l.color);
+                            if r.changed() {
+                                gesture = Some(self.field_gesture(&r));
+                            }
+                        });
+                    }
+                    let current = l.follow.and_then(|id| sources.iter().find(|s| s.0 == id)).map_or(t("egen", "own").to_string(), |s| s.1.clone());
+                    egui::ComboBox::from_id_salt(("lamp_follow", l.id)).selected_text(current).width(100.0).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut l.follow, None, t("egen", "own"));
+                        for (id, name) in &sources {
+                            ui.selectable_value(&mut l.follow, Some(*id), name);
+                        }
+                    });
+                    if ui.small_button("🗑").on_hover_text(t("Ta bort lampan", "Remove the lamp")).clicked() {
+                        remove = Some(i);
+                    }
+                    ui.end_row();
+                }
+            });
+            if let Some(i) = remove {
+                lamps.remove(i);
+            }
+            ui.add_space(6.0);
+            ui.menu_button(t("➕ Lampa ⏷", "➕ Lamp ⏷"), |ui| {
+                for kind in lm_core::LampKind::ALL {
+                    if ui.button(kind.label()).clicked() {
+                        let mut lamp = self.project.make_lamp(kind);
+                        // Efter lamporna i listan (som kan ha ändrats i fönstret).
+                        lamp.address = lamps.iter().map(|l| l.address + l.kind.channels() as u16).max().unwrap_or(1).min(512);
+                        lamp.name = format!("{} {}", t("Lampa", "Lamp"), lamps.len() + 1);
+                        lamps.push(lamp);
+                        ui.close();
+                    }
+                }
+            });
+            ui.label(RichText::new(t(
+                "Cues sparar lampornas läge och tonar dem. Master och Svart gäller även lamporna.",
+                "Cues store the lamps and fade them. Master and Black apply to the lamps too.",
+            )).color(Color32::from_gray(150)));
+        });
+        self.dmx_window_open = open;
+        if settings != self.project.settings {
+            self.exec(Command::ReplaceSettings(settings), None);
+        }
+        if lamps != self.project.lamps {
+            self.exec(Command::SetLamps(lamps), gesture);
         }
     }
 

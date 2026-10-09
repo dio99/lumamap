@@ -37,7 +37,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   they overlap.
 - **Cues** with fades – store which surfaces are visible, how bright and with
   which media, and step through them during a show.
-- **OSC and MIDI remote control** (TouchOSC, QLab, Ableton, USB controllers, …).
+- **OSC and MIDI remote control** (TouchOSC, QLab, Ableton, USB controllers, …)
+  and **DMX lights over Art-Net** that follow the cues.
 - **Undo everything**, autosave every 30 s and crash recovery.
 - English and Swedish user interface.
 
@@ -199,6 +200,15 @@ Mappings are saved in the project.
 MIDI is read straight from the kernel's raw MIDI devices (`/dev/snd/midi*`),
 so no extra libraries are needed and controllers plugged in while LumaMap
 runs are picked up automatically.
+
+## Lights (DMX)
+
+LumaMap can drive stage lights over Art-Net. Open ☰ → **Lights (DMX)…**,
+tick **Send Art-Net**, add lamps (dimmer, RGB, RGBW or dimmer + RGB) and set
+the DMX channel each one starts at. Every cue stores the lamps' level and
+colour and fades them with the projection; master and black-out apply too.
+Set a lamp's **Colour from** to a video and it follows the video's average
+colour, so the room light matches the projection.
 
 ## Language
 

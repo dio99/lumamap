@@ -18,6 +18,7 @@
 //! /lumamap/blackout                  i
 //! ```
 
+pub mod artnet;
 pub mod midi;
 
 use rosc::{OscMessage, OscPacket, OscType};

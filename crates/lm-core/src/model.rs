@@ -30,6 +30,9 @@ pub struct Project {
     /// Sparade tillstånd att växla mellan under en show.
     #[serde(default)]
     pub cues: Vec<Cue>,
+    /// Ljus som styrs med DMX (Art-Net).
+    #[serde(default)]
+    pub lamps: Vec<Lamp>,
     #[serde(default)]
     pub settings: Settings,
     next_id: u32,
@@ -51,6 +54,27 @@ pub struct Settings {
     /// Ljud som effekterna kan följa.
     #[serde(default)]
     pub audio: AudioSetting,
+    /// DMX-ljus via Art-Net.
+    #[serde(default)]
+    pub artnet: ArtNetSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtNetSettings {
+    pub enabled: bool,
+    /// Nodens IP-adress, eller 255.255.255.255 för alla på nätverket.
+    pub target: String,
+    pub universe: u16,
+}
+
+impl Default for ArtNetSettings {
+    fn default() -> Self {
+        ArtNetSettings {
+            enabled: false,
+            target: "255.255.255.255".into(),
+            universe: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -137,6 +161,7 @@ impl Default for Settings {
             midi: Vec::new(),
             bpm: default_bpm(),
             audio: AudioSetting::Off,
+            artnet: ArtNetSettings::default(),
         }
     }
 }
@@ -151,6 +176,108 @@ pub struct Cue {
     #[serde(default)]
     pub fade: f32,
     pub surfaces: Vec<CueSurface>,
+    /// Lampornas läge (lampor som inte finns med lämnas orörda).
+    #[serde(default)]
+    pub lamps: Vec<CueLamp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CueLamp {
+    pub lamp: LampId,
+    pub level: f32,
+    pub color: [f32; 3],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LampId(pub u32);
+
+/// En DMX-lampa.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Lamp {
+    pub id: LampId,
+    pub name: String,
+    /// Första DMX-kanalen, 1..512.
+    pub address: u16,
+    pub kind: LampKind,
+    /// Ljusstyrka 0..1.
+    pub level: f32,
+    pub color: [f32; 3],
+    /// Ta färgen från en källas medelfärg, så att ljuset matchar projektionen.
+    #[serde(default)]
+    pub follow: Option<SourceId>,
+}
+
+/// Lamptyper och hur deras kanaler ligger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LampKind {
+    /// En kanal: ljusstyrka.
+    Dimmer,
+    /// Tre kanaler: röd, grön, blå.
+    Rgb,
+    /// Fyra kanaler: röd, grön, blå, vit.
+    Rgbw,
+    /// Fyra kanaler: ljusstyrka, röd, grön, blå.
+    DimmerRgb,
+}
+
+impl LampKind {
+    pub const ALL: [LampKind; 4] = [LampKind::Dimmer, LampKind::Rgb, LampKind::Rgbw, LampKind::DimmerRgb];
+
+    pub fn channels(self) -> usize {
+        match self {
+            LampKind::Dimmer => 1,
+            LampKind::Rgb => 3,
+            LampKind::Rgbw | LampKind::DimmerRgb => 4,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            LampKind::Dimmer => t("Dimmer (1 kanal)", "Dimmer (1 channel)"),
+            LampKind::Rgb => t("RGB (3 kanaler)", "RGB (3 channels)"),
+            LampKind::Rgbw => t("RGBW (4 kanaler)", "RGBW (4 channels)"),
+            LampKind::DimmerRgb => t("Dimmer + RGB (4 kanaler)", "Dimmer + RGB (4 channels)"),
+        }
+    }
+}
+
+impl Lamp {
+    /// Kanalvärden 0..255, från lampans första kanal. `color` är den färg som
+    /// gäller just nu (egen eller från media), `master` skalar allt.
+    pub fn dmx(&self, color: [f32; 3], master: f32) -> Vec<u8> {
+        let level = (self.level * master).clamp(0.0, 1.0);
+        let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let [r, g, b] = color.map(|c| c * level);
+        match self.kind {
+            LampKind::Dimmer => vec![byte(level)],
+            LampKind::Rgb => vec![byte(r), byte(g), byte(b)],
+            LampKind::Rgbw => {
+                // Det gemensamma vita läggs på den vita kanalen.
+                let w = r.min(g).min(b);
+                vec![byte(r - w), byte(g - w), byte(b - w), byte(w)]
+            }
+            LampKind::DimmerRgb => {
+                let [r, g, b] = color;
+                vec![byte(level), byte(r), byte(g), byte(b)]
+            }
+        }
+    }
+}
+
+/// Alla lampors kanaler i ett DMX-universum (512 kanaler). `color_of` ger den
+/// färg lampan ska ha just nu.
+pub fn dmx_universe(lamps: &[Lamp], master: f32, color_of: impl Fn(&Lamp) -> [f32; 3]) -> [u8; 512] {
+    let mut out = [0u8; 512];
+    for l in lamps {
+        let start = (l.address.clamp(1, 512) - 1) as usize;
+        for (i, v) in l.dmx(color_of(l), master).into_iter().enumerate() {
+            if let Some(slot) = out.get_mut(start + i) {
+                *slot = v;
+            }
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -602,6 +729,7 @@ impl Project {
             surfaces: Vec::new(),
             outputs: Vec::new(),
             cues: Vec::new(),
+            lamps: Vec::new(),
             settings: Settings::default(),
             next_id: 1,
         };
@@ -627,6 +755,29 @@ impl Project {
                     source: s.source,
                 })
                 .collect(),
+            lamps: self
+                .lamps
+                .iter()
+                .map(|l| CueLamp {
+                    lamp: l.id,
+                    level: l.level,
+                    color: l.color,
+                })
+                .collect(),
+        }
+    }
+
+    /// Skapar en ny lampa efter de befintliga (läggs inte till – använd `Command::SetLamps`).
+    pub fn make_lamp(&mut self, kind: LampKind) -> Lamp {
+        let address = self.lamps.iter().map(|l| l.address + l.kind.channels() as u16).max().unwrap_or(1).min(512);
+        Lamp {
+            id: LampId(self.alloc_id()),
+            name: format!("{} {}", crate::i18n::t("Lampa", "Lamp"), self.lamps.len() + 1),
+            address,
+            kind,
+            level: 1.0,
+            color: [1.0, 1.0, 1.0],
+            follow: None,
         }
     }
 
@@ -734,6 +885,7 @@ impl Project {
             .chain(self.surfaces.iter().map(|s| s.id.0))
             .chain(self.outputs.iter().map(|o| o.id.0))
             .chain(self.cues.iter().map(|c| c.id.0))
+            .chain(self.lamps.iter().map(|l| l.id.0))
             .max()
             .unwrap_or(0);
         self.next_id = self.next_id.max(max + 1);
@@ -905,6 +1057,26 @@ mod tests {
         assert!(turned[1] > 0.99 && turned[0] < 0.01 && turned[2] < 0.01, "{turned:?}");
         let brighter = ColorAdjust { brightness: 0.2, ..id }.apply([0.5, 0.5, 0.5]);
         assert!((brighter[0] - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lamp_channels() {
+        let mut p = Project::new();
+        let mut rgbw = p.make_lamp(LampKind::Rgbw);
+        rgbw.address = 10;
+        rgbw.color = [1.0, 0.5, 0.25];
+        assert_eq!(rgbw.dmx(rgbw.color, 1.0), vec![191, 64, 0, 64]);
+        let mut dim = p.make_lamp(LampKind::DimmerRgb);
+        dim.level = 0.5;
+        dim.color = [1.0, 0.0, 0.0];
+        assert_eq!(dim.dmx(dim.color, 1.0), vec![128, 255, 0, 0]);
+        assert_eq!(dim.dmx(dim.color, 0.0)[0], 0, "master/svart släcker");
+        let u = dmx_universe(&[rgbw.clone()], 1.0, |l| l.color);
+        assert_eq!(&u[9..13], &[191, 64, 0, 64]);
+        assert_eq!(u[8], 0);
+        // Nästa lampa hamnar efter den förra.
+        p.lamps.push(rgbw);
+        assert_eq!(p.make_lamp(LampKind::Rgb).address, 14);
     }
 
     #[test]

@@ -5,14 +5,14 @@ use crate::app::LumaApp;
 use lm_core::i18n::t;
 use lm_control::{name_matches, ControlMsg, OscServer};
 use lm_core::midi::MidiEffect;
-use lm_core::{cue_start, fade_frame, Command, CueId, FadeStep, MidiAction, MidiBinding, MidiControl, SourceId, SourceKind, SurfaceId};
+use lm_core::{cue_start, fade_frame, Command, CueFade, CueId, MidiAction, MidiBinding, MidiControl, SourceId, SourceKind, SurfaceId};
 use std::time::{Duration, Instant};
 
 /// En pågående övergång till en cue.
 pub struct Fade {
     start: Instant,
     duration: f32,
-    steps: Vec<FadeStep>,
+    steps: CueFade,
     gesture: u64,
 }
 
@@ -188,6 +188,34 @@ impl LumaApp {
             *speed = v.clamp(lm_core::SPEED_MIN, lm_core::SPEED_MAX);
             let gesture = self.osc_gesture(id.0);
             self.exec(Command::ReplaceSource(src), Some(gesture));
+        }
+    }
+
+    // ---------- DMX ----------
+
+    /// Skickar lampornas kanaler med Art-Net, 30 gånger per sekund.
+    pub fn send_dmx(&mut self) {
+        let settings = &self.project.settings.artnet;
+        if !settings.enabled || self.dmx_sent.elapsed() < Duration::from_millis(33) {
+            return;
+        }
+        self.dmx_sent = Instant::now();
+        let master = if self.opts.blackout { 0.0 } else { self.opts.master };
+        let media = &self.media;
+        let universe = lm_core::dmx_universe(&self.project.lamps, master, |l| {
+            l.follow.and_then(|id| media.average_color(id)).unwrap_or(l.color)
+        });
+        if self.artnet.is_none() {
+            match lm_control::artnet::ArtNetSender::new() {
+                Ok(s) => self.artnet = Some(s),
+                Err(e) => {
+                    self.dmx_error = Some(e.to_string());
+                    return;
+                }
+            }
+        }
+        if let Some(sender) = &mut self.artnet {
+            self.dmx_error = sender.send(&settings.target, settings.universe, &universe).err().map(|e| e.to_string());
         }
     }
 

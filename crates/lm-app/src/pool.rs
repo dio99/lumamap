@@ -14,6 +14,8 @@ struct Entry {
 #[derive(Default)]
 pub struct MediaPool {
     items: HashMap<SourceId, Entry>,
+    /// Senaste medelfärgen per källa (för lampor som följer en källa).
+    colors: HashMap<SourceId, [f32; 3]>,
 }
 
 fn open(kind: &SourceKind) -> Box<dyn MediaSource> {
@@ -87,14 +89,23 @@ impl MediaPool {
         renderer: &mut lm_render::Renderer,
         egui: &mut egui_wgpu::Renderer,
     ) {
+        let colors = &mut self.colors;
         for (id, e) in &mut self.items {
-            e.media.poll(&mut |frame| renderer.upload(device, queue, egui, *id, &frame));
+            e.media.poll(&mut |frame| {
+                colors.insert(*id, frame.average_color());
+                renderer.upload(device, queue, egui, *id, &frame)
+            });
         }
     }
 
     /// Öppnar källan på nytt vid nästa `sync` (t.ex. efter tappad ström).
     pub fn restart(&mut self, id: SourceId) {
         self.items.remove(&id);
+    }
+
+    /// Källans senaste medelfärg, om den har visat någon bild.
+    pub fn average_color(&self, id: SourceId) -> Option<[f32; 3]> {
+        self.colors.get(&id).copied()
     }
 
     pub fn get(&self, id: SourceId) -> Option<&dyn MediaSource> {

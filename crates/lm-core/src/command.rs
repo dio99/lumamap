@@ -22,6 +22,8 @@ pub enum Command {
     ReplaceCue(Cue),
     MoveCueTo { id: CueId, index: usize },
     ReplaceSettings(Settings),
+    /// Ersätter alla lampor (lägga till, ta bort, ändra).
+    SetLamps(Vec<Lamp>),
     /// Flera kommandon som ett ångra-steg.
     Batch(Vec<Command>),
 }
@@ -124,6 +126,10 @@ impl Command {
                 let index = index.min(p.cues.len());
                 p.cues.insert(index, c);
                 Some(Command::MoveCueTo { id, index: from })
+            }
+            Command::SetLamps(new) => {
+                let old = std::mem::replace(&mut p.lamps, new);
+                Some(Command::SetLamps(old))
             }
             Command::ReplaceSettings(new) => {
                 let old = std::mem::replace(&mut p.settings, new);

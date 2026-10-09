@@ -91,6 +91,10 @@ pub struct LumaApp {
     /// Tempo uppmätt från ljudet, när det finns ett stabilt.
     pub audio_bpm: Option<f32>,
     pub audio_level: f32,
+    pub artnet: Option<lm_control::artnet::ArtNetSender>,
+    pub dmx_sent: Instant,
+    pub dmx_error: Option<String>,
+    pub dmx_window_open: bool,
     pub calibration: Option<crate::calib::Calibration>,
     /// Utgången som kalibreringsfönstret är öppet för.
     pub calibration_window_for: Option<OutputId>,
@@ -162,6 +166,10 @@ impl LumaApp {
             audio_bpm: None,
             audio_level: 0.0,
             window_title: String::new(),
+            artnet: None,
+            dmx_sent: Instant::now(),
+            dmx_error: None,
+            dmx_window_open: false,
             calibration: None,
             calibration_window_for: None,
             calibration_camera: None,
@@ -887,6 +895,7 @@ impl eframe::App for LumaApp {
         self.poll_osc();
         self.poll_midi();
         self.poll_audio();
+        self.send_dmx();
         // Taktslagsuret räknar upp i projektets tempo; ändrat tempo ger inga hopp.
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f64();
@@ -899,6 +908,7 @@ impl eframe::App for LumaApp {
         self.output_windows(&ctx);
         self.osc_window(&ctx);
         self.calibration_window(&ctx);
+        self.dmx_window(&ctx);
         self.midi_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
