@@ -48,6 +48,32 @@ pub struct Settings {
     /// Tempo för effekterna, slag per minut.
     #[serde(default = "default_bpm")]
     pub bpm: f32,
+    /// Ljud som effekterna kan följa.
+    #[serde(default)]
+    pub audio: AudioSetting,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AudioSetting {
+    #[default]
+    Off,
+    /// Mikrofon eller linjeingång.
+    Microphone,
+    /// Det datorn själv spelar.
+    Computer,
+}
+
+impl AudioSetting {
+    pub const ALL: [AudioSetting; 3] = [AudioSetting::Off, AudioSetting::Microphone, AudioSetting::Computer];
+
+    pub fn label(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            AudioSetting::Off => t("Av", "Off"),
+            AudioSetting::Microphone => t("Mikrofon", "Microphone"),
+            AudioSetting::Computer => t("Datorns ljud", "Computer audio"),
+        }
+    }
 }
 
 /// En kontroll på en MIDI-enhet.
@@ -110,6 +136,7 @@ impl Default for Settings {
             osc_port: default_osc_port(),
             midi: Vec::new(),
             bpm: default_bpm(),
+            audio: AudioSetting::Off,
         }
     }
 }

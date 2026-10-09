@@ -84,6 +84,15 @@ pub struct LumaApp {
     pub midi_learn: Option<lm_core::MidiAction>,
     pub midi_last: Option<(lm_control::midi::MidiEvent, Instant)>,
     pub midi_window_open: bool,
+    pub audio: Option<lm_media::audio::AudioInput>,
+    pub audio_running: lm_core::AudioSetting,
+    pub audio_beats_seen: u64,
+    pub beat_times: std::collections::VecDeque<Instant>,
+    /// Tempo uppmätt från ljudet, när det finns ett stabilt.
+    pub audio_bpm: Option<f32>,
+    pub audio_level: f32,
+    /// Fönstrets titel, så att den bara skickas när den ändras.
+    pub window_title: String,
     /// För taktslagsuret: när förra bildrutan ritades.
     last_frame: Instant,
     /// Senaste trycken på Tap.
@@ -142,6 +151,13 @@ impl LumaApp {
             midi_learn: None,
             midi_last: None,
             midi_window_open: false,
+            audio: None,
+            audio_running: lm_core::AudioSetting::Off,
+            audio_beats_seen: 0,
+            beat_times: Default::default(),
+            audio_bpm: None,
+            audio_level: 0.0,
+            window_title: String::new(),
             last_frame: Instant::now(),
             taps: Vec::new(),
             tap_gesture: None,
@@ -858,11 +874,13 @@ impl eframe::App for LumaApp {
 
         self.poll_osc();
         self.poll_midi();
+        self.poll_audio();
         // Taktslagsuret räknar upp i projektets tempo; ändrat tempo ger inga hopp.
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f64();
         self.last_frame = now;
-        self.opts.beats += dt * self.project.settings.bpm as f64 / 60.0;
+        let bpm = self.audio_bpm.unwrap_or(self.project.settings.bpm);
+        self.opts.beats += dt * bpm as f64 / 60.0;
         self.tick_fade();
         self.shortcuts(ui);
         self.editor_ui(ui);

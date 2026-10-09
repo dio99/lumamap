@@ -67,14 +67,53 @@ impl LumaApp {
             ui.separator();
             ui.toggle_value(&mut self.opts.output_test, t("⊞ Testbild", "⊞ Test pattern")).on_hover_text(t("Testbild på hela projektorn (T)", "Test pattern on the whole projector (T)"));
             ui.toggle_value(&mut self.opts.blackout, t("⏹ Svart", "⏹ Black")).on_hover_text(t("Svart på projektorn (B)", "Black out the projector (B)"));
-            ui.label("Master");
             ui.add(egui::Slider::new(&mut self.opts.master, 0.0..=1.0).show_value(false))
-                .on_hover_text(t("Ljusstyrka för alla ytor (sparas inte)", "Brightness of all surfaces (not saved)"));
+                .on_hover_text(t("Master: ljusstyrka för alla ytor (sparas inte)", "Master: brightness of all surfaces (not saved)"));
             ui.separator();
-            let mut bpm = self.project.settings.bpm;
+            // Ljud: källa och nivå.
+            let mut audio = self.project.settings.audio;
+            let r = egui::ComboBox::from_id_salt("audio_pick")
+                .selected_text("🎵")
+                .width(40.0)
+                .show_ui(ui, |ui| {
+                    for option in lm_core::AudioSetting::ALL {
+                        ui.selectable_value(&mut audio, option, option.label());
+                    }
+                })
+                .response;
+            let error = self.audio.as_ref().and_then(|a| a.error.clone());
+            match &error {
+                Some(e) => r.on_hover_text(format!("{}: {e}", t("Ljudet fungerar inte", "Audio is not working"))),
+                None => r.on_hover_text(format!(
+                    "{}: {}\n{}",
+                    t("Ljud", "Audio"),
+                    audio.label(),
+                    t(
+                        "Låt effekterna följa musiken: från mikrofonen eller det datorn spelar",
+                        "Let effects follow the music: from the microphone or what the computer plays",
+                    )
+                )),
+            };
+            if audio != self.project.settings.audio {
+                let mut settings = self.project.settings.clone();
+                settings.audio = audio;
+                self.exec(Command::ReplaceSettings(settings), None);
+            }
+            if self.audio.is_some() {
+                let colour = if error.is_some() { Color32::from_rgb(255, 100, 100) } else { Color32::from_rgb(120, 220, 120) };
+                ui.add(egui::ProgressBar::new(self.opts.audio).desired_width(36.0).fill(colour));
+            }
+            ui.separator();
+            let mut bpm = self.audio_bpm.unwrap_or(self.project.settings.bpm);
+            let from_audio = self.audio_bpm.is_some();
+            let prefix = if from_audio { "🎵 " } else { "♩ " };
             let r = ui
-                .add(egui::DragValue::new(&mut bpm).range(30.0..=300.0).speed(0.5).fixed_decimals(0).prefix("♩ "))
-                .on_hover_text(t("Tempo för effekterna (slag per minut)", "Tempo for the effects (beats per minute)"));
+                .add_enabled(!from_audio, egui::DragValue::new(&mut bpm).range(30.0..=300.0).speed(0.5).fixed_decimals(0).prefix(prefix))
+                .on_hover_text(if from_audio {
+                    t("Tempot hörs i musiken", "The tempo is taken from the music")
+                } else {
+                    t("Tempo för effekterna (slag per minut)", "Tempo for the effects (beats per minute)")
+                });
             if r.changed() {
                 let gesture = self.field_gesture(&r);
                 let mut settings = self.project.settings.clone();
@@ -143,6 +182,7 @@ impl LumaApp {
                 if ui.button("💾").on_hover_text(t("Spara (Ctrl+S)", "Save (Ctrl+S)")).clicked() {
                     self.save(false);
                 }
+                // Projektnamnet står i fönstrets titelrad.
                 let name = self
                     .path
                     .as_ref()
@@ -150,7 +190,11 @@ impl LumaApp {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| t("Namnlöst projekt", "Untitled project").into());
                 let star = if self.dirty() { " •" } else { "" };
-                ui.label(RichText::new(format!("{name}{star}")).color(Color32::from_gray(170)));
+                let title = format!("{name}{star} – LumaMap");
+                if self.window_title != title {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+                    self.window_title = title;
+                }
             });
         });
         ui.add_space(2.0);
@@ -852,6 +896,10 @@ impl LumaApp {
                         }
                         ui.end_row();
                     });
+                    ui.checkbox(&mut e.follow_audio, t("🎵 Följ ljudet", "🎵 Follow the sound")).on_hover_text(t(
+                        "Basen i musiken styr styrkan. Välj ljud med 🎵 i verktygsraden.",
+                        "The bass in the music drives the amount. Choose audio with 🎵 in the toolbar.",
+                    ));
                 }
             });
 

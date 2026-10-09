@@ -5,6 +5,7 @@
 //!   cargo run -p lm-media --example probe -- file video.mp4
 //!   cargo run -p lm-media --example probe -- file video.mp4 2.0   (med hastighet)
 //!   cargo run -p lm-media --example probe -- cameras
+//!   cargo run -p lm-media --example probe -- audio mic|computer|<pulse-källa>
 
 use lm_media::{MediaSource, VideoSource};
 use std::time::{Duration, Instant};
@@ -14,6 +15,24 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (kind, target) = (args.first().map(String::as_str), args.get(1).map(String::as_str).unwrap_or(""));
     let mut src = match kind {
+        Some("audio") => {
+            use lm_media::audio::{AudioInput, AudioInputKind};
+            let mut input = match target {
+                "computer" => AudioInput::start(AudioInputKind::Computer),
+                "mic" | "" => AudioInput::start(AudioInputKind::Microphone),
+                device => AudioInput::start_device(device),
+            };
+            for _ in 0..10 {
+                std::thread::sleep(Duration::from_millis(500));
+                let l = input.levels();
+                if let Some(e) = &input.error {
+                    println!("Fel: {e}");
+                    std::process::exit(1);
+                }
+                println!("bas {:.2}  nivå {:.2}  slag {}", l.bass, l.level, l.beats);
+            }
+            return;
+        }
         Some("cameras") => {
             for c in lm_media::list_cameras() {
                 println!("{}  {}", c.device, c.name);

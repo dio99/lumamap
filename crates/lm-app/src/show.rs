@@ -191,6 +191,50 @@ impl LumaApp {
         }
     }
 
+    // ---------- Ljud ----------
+
+    /// Startar om ljudingången när inställningen ändras, och låter basen och
+    /// taktslagen driva effekterna.
+    pub fn poll_audio(&mut self) {
+        use lm_media::audio::{AudioInput, AudioInputKind};
+        let want = self.project.settings.audio;
+        if want != self.audio_running {
+            self.audio_running = want;
+            self.audio = match want {
+                lm_core::AudioSetting::Off => None,
+                lm_core::AudioSetting::Microphone => Some(AudioInput::start(AudioInputKind::Microphone)),
+                lm_core::AudioSetting::Computer => Some(AudioInput::start(AudioInputKind::Computer)),
+            };
+            self.audio_beats_seen = 0;
+            self.beat_times.clear();
+            self.audio_bpm = None;
+        }
+        let Some(input) = &mut self.audio else {
+            self.opts.audio = 0.0;
+            self.audio_level = 0.0;
+            return;
+        };
+        let levels = input.levels();
+        self.opts.audio = levels.bass;
+        self.audio_level = levels.level;
+        if levels.beats > self.audio_beats_seen {
+            self.audio_beats_seen = levels.beats;
+            // Lägg effekternas takt på slaget.
+            self.opts.beats = self.opts.beats.round();
+            let now = Instant::now();
+            self.beat_times.push_back(now);
+            while self.beat_times.len() > 9 {
+                self.beat_times.pop_front();
+            }
+            self.audio_bpm = tempo_from_beats(&self.beat_times);
+        }
+        // Inga slag på ett tag: tillbaka till det inställda tempot.
+        if self.beat_times.back().is_some_and(|t| t.elapsed() > Duration::from_secs(4)) {
+            self.beat_times.clear();
+            self.audio_bpm = None;
+        }
+    }
+
     // ---------- MIDI ----------
 
     /// Tar hand om MIDI-händelser: inlärning av en ny koppling, eller
@@ -272,5 +316,39 @@ impl LumaApp {
         };
         self.osc_gestures.insert(id, (gesture, Instant::now()));
         gesture
+    }
+}
+
+/// Tempo ur avstånden mellan de senaste slagen (medianen, så att enstaka
+/// missade eller extra slag inte stör). `None` tills det finns ett stabilt.
+pub fn tempo_from_beats(times: &std::collections::VecDeque<Instant>) -> Option<f32> {
+    if times.len() < 5 {
+        return None;
+    }
+    let mut gaps: Vec<f32> = times.iter().zip(times.iter().skip(1)).map(|(a, b)| b.duration_since(*a).as_secs_f32()).collect();
+    gaps.sort_by(f32::total_cmp);
+    let median = gaps[gaps.len() / 2];
+    let bpm = 60.0 / median;
+    // Ett vanligt dansgolvsområde; utanför det är det troligen halv/dubbel takt.
+    (60.0..=200.0).contains(&bpm).then(|| bpm.round())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn tempo_from_steady_and_noisy_beats() {
+        let start = Instant::now();
+        let at = |s: f32| start + Duration::from_secs_f32(s);
+        let steady: VecDeque<_> = (0..8).map(|i| at(i as f32 * 0.5)).collect();
+        assert_eq!(tempo_from_beats(&steady), Some(120.0));
+        // Ett extra slag mitt emellan ändrar inte medianen.
+        let mut noisy: Vec<_> = (0..8).map(|i| at(i as f32 * 0.5)).collect();
+        noisy.insert(4, at(1.75));
+        assert_eq!(tempo_from_beats(&noisy.into_iter().collect()), Some(120.0));
+        let few: VecDeque<_> = (0..3).map(|i| at(i as f32 * 0.5)).collect();
+        assert_eq!(tempo_from_beats(&few), None);
     }
 }

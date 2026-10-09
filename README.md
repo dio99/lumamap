@@ -31,6 +31,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **Effects on any surface:** edge glow that follows the surface's shape,
   kaleidoscope, tiles, scroll, rotate, pulse, colour cycle, strobe, blur and
   invert – all in time with a global tempo you can tap in.
+- **Sound-reactive:** pick 🎵 Microphone or Computer audio in the toolbar and
+  effects can follow the bass; the tempo is picked up from the music.
 - **Several projectors**, each in its own window, with **edge blending** where
   they overlap.
 - **Cues** with fades – store which surfaces are visible, how bright and with

@@ -1,6 +1,7 @@
 //! Mediekällor. Varje källa lämnar bara sin *senaste* bildruta – aldrig en kö –
 //! så att fördröjningen aldrig växer om renderingen hackar till.
 
+pub mod audio;
 mod still;
 mod video;
 
