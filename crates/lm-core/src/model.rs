@@ -42,6 +42,54 @@ pub struct Settings {
     pub osc_enabled: bool,
     #[serde(default = "default_osc_port")]
     pub osc_port: u16,
+    /// MIDI-kontroller kopplade till åtgärder.
+    #[serde(default)]
+    pub midi: Vec<MidiBinding>,
+}
+
+/// En kontroll på en MIDI-enhet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MidiControl {
+    /// Ratt eller fader (Control Change).
+    Cc { channel: u8, number: u8 },
+    /// Tangent eller knapp (Note).
+    Note { channel: u8, number: u8 },
+}
+
+impl MidiControl {
+    pub fn label(&self) -> String {
+        match self {
+            MidiControl::Cc { channel, number } => format!("CC {number} ({} {})", crate::i18n::t("kanal", "channel"), channel + 1),
+            MidiControl::Note { channel, number } => {
+                format!("{} {number} ({} {})", crate::i18n::t("Ton", "Note"), crate::i18n::t("kanal", "channel"), channel + 1)
+            }
+        }
+    }
+}
+
+/// Vad en MIDI-kontroll gör.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MidiAction {
+    /// Fader: master-nivå.
+    Master,
+    /// Knapp växlar, fader: av under mitten, på över.
+    Blackout,
+    CueNext,
+    CuePrev,
+    CueGo(CueId),
+    /// Fader: ytans opacitet.
+    SurfaceOpacity(SurfaceId),
+    /// Knapp växlar, fader: av under mitten, på över.
+    SurfaceVisible(SurfaceId),
+    SourcePlayPause(SourceId),
+    /// Fader: hastighet 0,25–4×.
+    SourceSpeed(SourceId),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MidiBinding {
+    pub control: MidiControl,
+    pub action: MidiAction,
 }
 
 fn default_osc_port() -> u16 {
@@ -53,6 +101,7 @@ impl Default for Settings {
         Settings {
             osc_enabled: true,
             osc_port: default_osc_port(),
+            midi: Vec::new(),
         }
     }
 }

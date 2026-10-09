@@ -4,6 +4,7 @@ pub mod command;
 pub mod collect;
 pub mod cue;
 pub mod i18n;
+pub mod midi;
 pub mod model;
 
 pub use command::{Command, History};

@@ -18,6 +18,8 @@
 //! /lumamap/blackout                  i
 //! ```
 
+pub mod midi;
+
 use rosc::{OscMessage, OscPacket, OscType};
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};

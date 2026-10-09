@@ -78,6 +78,12 @@ pub struct LumaApp {
     pub cameras: Option<Vec<lm_media::CameraInfo>>,
     /// Adressfältet för en ny ström, när det är öppet.
     pub stream_input: Option<String>,
+    pub midi: lm_control::midi::MidiInput,
+    pub midi_state: lm_core::midi::MidiState,
+    /// Åtgärden som väntar på att en MIDI-kontroll ska röras.
+    pub midi_learn: Option<lm_core::MidiAction>,
+    pub midi_last: Option<(lm_control::midi::MidiEvent, Instant)>,
+    pub midi_window_open: bool,
     pub editor_canvas: Option<egui::Rect>,
 }
 
@@ -126,6 +132,11 @@ impl LumaApp {
             osc_window_open: false,
             cameras: None,
             stream_input: None,
+            midi: lm_control::midi::MidiInput::start(),
+            midi_state: Default::default(),
+            midi_learn: None,
+            midi_last: None,
+            midi_window_open: false,
             editor_canvas: None,
         };
 
@@ -814,11 +825,13 @@ impl eframe::App for LumaApp {
         }
 
         self.poll_osc();
+        self.poll_midi();
         self.tick_fade();
         self.shortcuts(ui);
         self.editor_ui(ui);
         self.output_windows(&ctx);
         self.osc_window(&ctx);
+        self.midi_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 

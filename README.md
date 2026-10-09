@@ -30,7 +30,7 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   they overlap.
 - **Cues** with fades – store which surfaces are visible, how bright and with
   which media, and step through them during a show.
-- **OSC remote control** (TouchOSC, QLab, Ableton, …).
+- **OSC and MIDI remote control** (TouchOSC, QLab, Ableton, USB controllers, …).
 - **Undo everything**, autosave every 30 s and crash recovery.
 - English and Swedish user interface.
 
@@ -163,6 +163,19 @@ written as `_`, or by number.
 
 Buttons that send 1 on press and 0 on release (as TouchOSC does) trigger
 on the press only.
+
+## MIDI
+
+Connect a USB MIDI controller and open ☰ → **MIDI…** (or click **MIDI** in
+the status bar). Choose **➕ New mapping**, pick what it should control and
+move a fader or press a button – that's it. Faders can drive the master
+level, a surface's opacity or a video's speed; buttons can trigger cues,
+next/previous cue, black out, show/hide a surface or play/pause a video.
+Mappings are saved in the project.
+
+MIDI is read straight from the kernel's raw MIDI devices (`/dev/snd/midi*`),
+so no extra libraries are needed and controllers plugged in while LumaMap
+runs are picked up automatically.
 
 ## Language
 

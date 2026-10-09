@@ -110,6 +110,9 @@ impl LumaApp {
                     if ui.button(t("OSC-fjärrstyrning…", "OSC remote control…")).clicked() {
                         self.osc_window_open = true;
                     }
+                    if ui.button("🎹 MIDI…").clicked() {
+                        self.midi_window_open = true;
+                    }
                     ui.separator();
                     ui.menu_button("🌐 Language / Språk", |ui| {
                         for lang in Language::ALL {
@@ -194,6 +197,22 @@ impl LumaApp {
                 let color = if fresh { ACCENT } else { color };
                 if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text(t("OSC-inställningar", "OSC settings")).clicked() {
                     self.osc_window_open = true;
+                }
+                let devices = self.midi.devices().len();
+                let fresh = self.midi_last.as_ref().is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300));
+                let color = if fresh {
+                    ACCENT
+                } else if devices > 0 {
+                    Color32::from_rgb(120, 200, 120)
+                } else {
+                    Color32::from_gray(120)
+                };
+                if ui
+                    .add(egui::Button::new(RichText::new(format!("MIDI {devices}")).color(color)).frame(false))
+                    .on_hover_text(t("MIDI-kopplingar", "MIDI mappings"))
+                    .clicked()
+                {
+                    self.midi_window_open = true;
                 }
                 ui.separator();
                 if let Some(o) = self.project.output(self.current_output) {
@@ -505,6 +524,107 @@ impl LumaApp {
         });
         self.osc_window_open = open;
         if settings != self.project.settings {
+            self.exec(Command::ReplaceSettings(settings), None);
+        }
+    }
+
+    pub fn midi_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.midi_window_open;
+        let mut remove = None;
+        egui::Window::new("MIDI").open(&mut open).resizable(false).show(ctx, |ui| {
+            let devices = self.midi.devices();
+            if devices.is_empty() {
+                ui.label(RichText::new(t("Ingen MIDI-enhet hittades. Anslut en USB-kontroller.", "No MIDI device found. Connect a USB controller.")).color(Color32::from_gray(150)));
+            } else {
+                ui.label(format!("{}: {}", t("Anslutna", "Connected"), devices.join(", ")));
+            }
+            if let Some((e, at)) = &self.midi_last {
+                let fresh = at.elapsed() < Duration::from_millis(400);
+                let text = RichText::new(format!("{}: {} = {:.2}", t("Senast", "Last"), e.control.label(), e.value));
+                ui.label(if fresh { text.color(ACCENT) } else { text.color(Color32::from_gray(150)) });
+            }
+            ui.add_space(8.0);
+            ui.label(RichText::new(t("Kopplingar", "Mappings")).strong());
+            if self.project.settings.midi.is_empty() {
+                ui.label(RichText::new(t("Inga än.", "None yet.")).color(Color32::from_gray(150)));
+            }
+            egui::Grid::new("midi_bindings").num_columns(3).spacing([12.0, 4.0]).show(ui, |ui| {
+                for (i, b) in self.project.settings.midi.iter().enumerate() {
+                    ui.label(self.midi_action_label(b.action));
+                    ui.label(RichText::new(b.control.label()).monospace());
+                    if ui.small_button("🗑").clicked() {
+                        remove = Some(i);
+                    }
+                    ui.end_row();
+                }
+            });
+            ui.add_space(8.0);
+            match self.midi_learn {
+                Some(action) => {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} {}", t("Rör en kontroll för:", "Move a control for:"), self.midi_action_label(action)))
+                                .color(Color32::from_rgb(255, 200, 80)),
+                        );
+                        if ui.button(t("Avbryt", "Cancel")).clicked() {
+                            self.midi_learn = None;
+                        }
+                    });
+                }
+                None => {
+                    ui.menu_button(t("➕ Ny koppling ⏷", "➕ New mapping ⏷"), |ui| {
+                        let mut pick = None;
+                        for action in [lm_core::MidiAction::Master, lm_core::MidiAction::Blackout, lm_core::MidiAction::CueNext, lm_core::MidiAction::CuePrev] {
+                            if ui.button(self.midi_action_label(action)).clicked() {
+                                pick = Some(action);
+                            }
+                        }
+                        ui.menu_button("Cue ▸", |ui| {
+                            for c in &self.project.cues {
+                                if ui.button(format!("GO {}", c.name)).clicked() {
+                                    pick = Some(lm_core::MidiAction::CueGo(c.id));
+                                }
+                            }
+                        });
+                        ui.menu_button(t("Yta ▸", "Surface ▸"), |ui| {
+                            for s in &self.project.surfaces {
+                                ui.menu_button(&s.name, |ui| {
+                                    if ui.button(t("Opacitet (fader)", "Opacity (fader)")).clicked() {
+                                        pick = Some(lm_core::MidiAction::SurfaceOpacity(s.id));
+                                    }
+                                    if ui.button(t("Synlig (knapp)", "Visible (button)")).clicked() {
+                                        pick = Some(lm_core::MidiAction::SurfaceVisible(s.id));
+                                    }
+                                });
+                            }
+                        });
+                        ui.menu_button(t("Video ▸", "Video ▸"), |ui| {
+                            for s in self.project.sources.iter().filter(|s| matches!(s.kind, SourceKind::Video { .. })) {
+                                ui.menu_button(&s.name, |ui| {
+                                    if ui.button(t("Spela/paus (knapp)", "Play/pause (button)")).clicked() {
+                                        pick = Some(lm_core::MidiAction::SourcePlayPause(s.id));
+                                    }
+                                    if ui.button(t("Hastighet (fader)", "Speed (fader)")).clicked() {
+                                        pick = Some(lm_core::MidiAction::SourceSpeed(s.id));
+                                    }
+                                });
+                            }
+                        });
+                        if pick.is_some() {
+                            self.midi_learn = pick;
+                            ui.close();
+                        }
+                    });
+                }
+            }
+        });
+        if !open {
+            self.midi_learn = None;
+        }
+        self.midi_window_open = open;
+        if let Some(i) = remove {
+            let mut settings = self.project.settings.clone();
+            settings.midi.remove(i);
             self.exec(Command::ReplaceSettings(settings), None);
         }
     }
