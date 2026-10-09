@@ -137,10 +137,35 @@ free to use in your own shows:
 | `matrix.mp4` | Falling green "Matrix" characters |
 | `lightgrid.mp4` | Glowing window frames with light pulses – made for building facades |
 | `galaxy.mp4` | A rotating spiral galaxy |
+| **Christmas** | |
+| `snow.mp4` | Snow falling in three layers |
+| `xmas-lights.mp4` | Strings of coloured lights that chase and twinkle – along the eaves |
+| `sparkle.mp4` | Falling gold glitter and twinkling stars |
+| `santa.mp4` | Santa's sleigh and reindeer flying past the moon |
+| **Halloween** | |
+| `pumpkin.mp4` | A carved pumpkin with a flickering candle inside |
+| `ghosts.mp4` | Ghosts floating through fog |
+| `bats.mp4` | Bats flapping past the full moon |
+| `eyes.mp4` | Glowing eyes in the dark – for windows and bushes |
+| `skeleton.mp4` | A dancing skeleton – for a door or a window |
+| **Façade fun** | |
+| `bricks.mp4` | The brick wall falls apart, light pours out, and it rebuilds itself |
+| `window.mp4` | A silhouette walks past a lit window and waves – map it onto a real window |
+
+There are also greeting cards: `god-jul.jpg`, `merry-christmas.jpg`,
+`glad-halloween.jpg` and `happy-halloween.jpg`.
+
+Ready-made projects show how to combine them: `examples/christmas.lmap`,
+`examples/halloween.lmap` and `examples/facade.lmap` (step through the cues
+with **Enter**).
+
+**Tip:** videos on a black background – lights, eyes, ghosts, the skeleton,
+the pumpkin – look best with the blend mode **Add**. Black then becomes
+transparent and only the light is projected.
 
 They are generated from code, so there are no licensing questions and you
 can change them. Edit `examples/media/generate.py` and run it (needs numpy
-and ffmpeg; the Matrix video also needs Pillow):
+and ffmpeg; Pillow for Matrix, the seasonal videos and the cards):
 
 ```bash
 python3 examples/media/generate.py            # all videos

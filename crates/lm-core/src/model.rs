@@ -988,6 +988,23 @@ mod tests {
         assert!(back.surfaces.iter().all(|s| s.id.0 < new_id));
     }
 
+    /// Alla exempelprojekt ska gå att öppna och peka på media som finns.
+    #[test]
+    fn seasonal_projects_load() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        for (name, text) in [
+            ("christmas", include_str!("../../../examples/christmas.lmap")),
+            ("halloween", include_str!("../../../examples/halloween.lmap")),
+            ("facade", include_str!("../../../examples/facade.lmap")),
+        ] {
+            let p = Project::from_ron(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert!(!p.cues.is_empty(), "{name}");
+            for s in &p.sources {
+                assert!(dir.join(s.kind.path().unwrap()).exists(), "{name}: {}", s.name);
+            }
+        }
+    }
+
     #[test]
     fn gallery_project_loads() {
         let p = Project::from_ron(include_str!("../../../examples/gallery.lmap")).unwrap();

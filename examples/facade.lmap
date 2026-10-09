@@ -1,0 +1,24 @@
+(
+    version: 1,
+    sources: [
+        (id: (2), name: "Tegel", kind: Video(path: "media/bricks.mp4", looping: true, muted: true)),
+        (id: (3), name: "Fönster", kind: Video(path: "media/window.mp4", looping: true, muted: true)),
+    ],
+    surfaces: [
+        (id: (10), name: "Fasad", source: Some((2)), output: (1), visible: true, 
+         src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]),
+        (id: (11), name: "Fönster vänster", source: Some((3)), output: (1), visible: true, 
+         src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.12, 0.3), (0.32, 0.3), (0.32, 0.7), (0.12, 0.7)]),
+        (id: (12), name: "Fönster höger", source: Some((3)), output: (1), visible: true, 
+         src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.68, 0.3), (0.88, 0.3), (0.88, 0.7), (0.68, 0.7)]),
+    ],
+    outputs: [(id: (1), name: "Projektor 1", resolution: (1920, 1080))],
+    cues: [
+        (id: (20), name: "Fasad och fönster", fade: 1.0, surfaces: [(surface: (10), visible: true, opacity: 1.0, source: Some((2))), (surface: (11), visible: true, opacity: 1.0, source: Some((3))), (surface: (12), visible: true, opacity: 1.0, source: Some((3)))]),
+        (id: (21), name: "Bara fönstren", fade: 1.5, surfaces: [(surface: (10), visible: false, opacity: 1.0, source: Some((2))), (surface: (11), visible: true, opacity: 1.0, source: Some((3))), (surface: (12), visible: true, opacity: 1.0, source: Some((3)))]),
+    ],
+    next_id: 100,
+)
