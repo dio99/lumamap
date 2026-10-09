@@ -71,7 +71,8 @@ pub struct LumaApp {
     /// Porten som senast försöktes (så att en upptagen port inte provas varje bildruta).
     pub osc_port_tried: Option<u16>,
     pub osc_last: Option<(String, Instant)>,
-    pub osc_gestures: HashMap<SurfaceId, (u64, Instant)>,
+    /// Senaste OSC-gest per yta eller källa (id), så att snabba fadrar blir ett ångra-steg.
+    pub osc_gestures: HashMap<u32, (u64, Instant)>,
     pub osc_window_open: bool,
     /// Kameror som hittats (söks först när menyn öppnas).
     pub cameras: Option<Vec<lm_media::CameraInfo>>,
@@ -237,6 +238,7 @@ impl LumaApp {
                     path: path.clone(),
                     looping: true,
                     muted: false,
+                    speed: 1.0,
                 },
                 None if path.extension().is_some_and(|e| e == "lmap") => {
                     self.request(Pending::Open(Some(path)));

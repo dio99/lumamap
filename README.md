@@ -144,6 +144,7 @@ written as `_`, or by number.
 /lumamap/source/<name>/play
 /lumamap/source/<name>/pause
 /lumamap/source/<name>/seek        f   (seconds)
+/lumamap/source/<name>/speed       f   (0.1..4, 1 = normal)
 /lumamap/master/opacity            f   (0 = black)
 /lumamap/blackout                  i
 ```

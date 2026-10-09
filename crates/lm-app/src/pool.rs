@@ -18,7 +18,11 @@ pub struct MediaPool {
 
 fn open(kind: &SourceKind) -> Box<dyn MediaSource> {
     match kind {
-        SourceKind::Video { path, looping, muted } => Box::new(VideoSource::open(path, *looping, *muted)),
+        SourceKind::Video { path, looping, muted, speed } => {
+            let mut v = VideoSource::open(path, *looping, *muted);
+            v.set_speed(*speed as f64);
+            Box::new(v)
+        }
         SourceKind::Image { path } => Box::new(StillSource::image(path)),
         SourceKind::Color { rgba } => Box::new(StillSource::color(*rgba)),
         SourceKind::TestPattern => Box::new(StillSource::test_pattern()),
@@ -42,9 +46,10 @@ impl MediaPool {
                 Some(e) if e.kind == src.kind => {}
                 Some(e) => match (&e.kind, &src.kind) {
                     // Bara flaggor ändrade – starta inte om videon.
-                    (SourceKind::Video { path: a, .. }, SourceKind::Video { path: b, looping, muted }) if a == b => {
+                    (SourceKind::Video { path: a, .. }, SourceKind::Video { path: b, looping, muted, speed }) if a == b => {
                         e.media.set_looping(*looping);
                         e.media.set_muted(*muted);
+                        e.media.set_speed(*speed as f64);
                         e.kind = src.kind.clone();
                     }
                     (SourceKind::Stream { uri: a, .. }, SourceKind::Stream { uri: b, muted }) if a == b => {

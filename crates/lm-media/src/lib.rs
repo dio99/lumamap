@@ -123,6 +123,7 @@ pub trait MediaSource: Send {
         None
     }
     fn set_looping(&mut self, _looping: bool) {}
+    fn set_speed(&mut self, _speed: f64) {}
     fn set_muted(&mut self, _muted: bool) {}
 }
 

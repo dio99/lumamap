@@ -819,7 +819,7 @@ impl LumaApp {
             self.live_controls(ui, &src);
             return;
         }
-        let SourceKind::Video { path, looping, muted } = &src.kind else { return };
+        let SourceKind::Video { path, looping, muted, speed } = &src.kind else { return };
         ui.add_space(14.0);
         ui.heading(t("Uppspelning", "Playback"));
         let Some(media) = self.media.get_mut(sid) else { return };
@@ -851,11 +851,29 @@ impl LumaApp {
                 media.seek(t);
             }
         }
-        let (mut l, mut m) = (*looping, *muted);
+        let (mut l, mut m, mut sp) = (*looping, *muted, *speed);
         let mut changed = false;
+        let mut gesture = None;
         ui.horizontal(|ui| {
             changed |= ui.checkbox(&mut l, t("🔁 Loopa", "🔁 Loop")).changed();
             changed |= ui.checkbox(&mut m, t("🔇 Ljud av", "🔇 Mute")).changed();
+        });
+        ui.horizontal(|ui| {
+            ui.label(t("Hastighet", "Speed"));
+            let r = ui.add(
+                egui::Slider::new(&mut sp, lm_core::SPEED_MIN..=lm_core::SPEED_MAX)
+                    .logarithmic(true)
+                    .fixed_decimals(2)
+                    .suffix("×"),
+            );
+            if r.changed() {
+                changed = true;
+                gesture = Some(self.field_gesture(&r));
+            }
+            if (sp - 1.0).abs() > 1e-3 && ui.small_button("1×").clicked() {
+                sp = 1.0;
+                changed = true;
+            }
         });
         if changed {
             let mut ns = src.clone();
@@ -863,8 +881,9 @@ impl LumaApp {
                 path: path.clone(),
                 looping: l,
                 muted: m,
+                speed: sp,
             };
-            self.exec(Command::ReplaceSource(ns), None);
+            self.exec(Command::ReplaceSource(ns), gesture);
         }
     }
 

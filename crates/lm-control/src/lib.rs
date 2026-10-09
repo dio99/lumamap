@@ -8,6 +8,7 @@
 //! /lumamap/source/<namn>/play
 //! /lumamap/source/<namn>/pause
 //! /lumamap/source/<namn>/seek        f   (sekunder)
+//! /lumamap/source/<namn>/speed       f   (0.1..4, 1 = normal)
 //! /lumamap/surface/<namn>/opacity    f   (0..1)
 //! /lumamap/surface/<namn>/visible    i
 //! /lumamap/cue/<nummer eller namn>/go
@@ -31,6 +32,7 @@ pub enum ControlMsg {
     SourcePlay(String),
     SourcePause(String),
     SourceSeek(String, f64),
+    SourceSpeed(String, f32),
     SurfaceOpacity(String, f32),
     SurfaceVisible(String, bool),
     CueGo(String),
@@ -72,6 +74,7 @@ fn parse_message(m: &OscMessage) -> Option<ControlMsg> {
         ["lumamap", "source", n, "play"] if pressed(m) => ControlMsg::SourcePlay(name(n)),
         ["lumamap", "source", n, "pause"] if pressed(m) => ControlMsg::SourcePause(name(n)),
         ["lumamap", "source", n, "seek"] => ControlMsg::SourceSeek(name(n), number(m)?.max(0.0)),
+        ["lumamap", "source", n, "speed"] => ControlMsg::SourceSpeed(name(n), number(m)?.clamp(0.1, 4.0) as f32),
         ["lumamap", "surface", n, "opacity"] => ControlMsg::SurfaceOpacity(name(n), number(m)?.clamp(0.0, 1.0) as f32),
         ["lumamap", "surface", n, "visible"] => ControlMsg::SurfaceVisible(name(n), number(m)? > 0.5),
         ["lumamap", "cue", "next"] if pressed(m) => ControlMsg::CueNext,
@@ -172,6 +175,10 @@ mod tests {
             vec![ControlMsg::SurfaceVisible("3".into(), false)]
         );
         assert_eq!(parse(&msg("/lumamap/cue/2/go", vec![])), vec![ControlMsg::CueGo("2".into())]);
+        assert_eq!(
+            parse(&msg("/lumamap/source/intro/speed", vec![OscType::Float(9.0)])),
+            vec![ControlMsg::SourceSpeed("intro".into(), 4.0)]
+        );
         assert_eq!(parse(&msg("/lumamap/cue/next", vec![OscType::Float(1.0)])), vec![ControlMsg::CueNext]);
         assert_eq!(
             parse(&msg("/lumamap/master/opacity", vec![OscType::Double(2.0)])),

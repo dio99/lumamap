@@ -92,6 +92,9 @@ pub enum SourceKind {
         looping: bool,
         #[serde(default)]
         muted: bool,
+        /// Uppspelningshastighet, 1 = normal.
+        #[serde(default = "one")]
+        speed: f32,
     },
     Image {
         path: PathBuf,
@@ -269,6 +272,10 @@ pub struct Mask {
     #[serde(default)]
     pub invert: bool,
 }
+
+/// Tillåten uppspelningshastighet.
+pub const SPEED_MIN: f32 = 0.1;
+pub const SPEED_MAX: f32 = 4.0;
 
 pub const MASK_MIN_POINTS: usize = 3;
 pub const MASK_MAX_POINTS: usize = 32;
@@ -571,6 +578,7 @@ mod tests {
                 path: "media/intro.mp4".into(),
                 looping: true,
                 muted: false,
+                speed: 1.0,
             },
         );
         let sid = src.id;

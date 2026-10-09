@@ -52,6 +52,10 @@ pub struct VideoSource {
     size: Option<[u32; 2]>,
     looping: bool,
     playing: bool,
+    /// Uppspelningshastighet; varje sökning måste ange den, annars blir den 1 igen.
+    speed: f64,
+    /// Hastigheten ändrades innan pipelinen var igång; tillämpas när den spelar.
+    speed_pending: bool,
     /// Kamera eller ström: går inte att spola och tar slut i stället för att loopa.
     live: bool,
     error: Option<String>,
@@ -83,6 +87,8 @@ impl VideoSource {
                 size: None,
                 looping,
                 playing: false,
+                speed: 1.0,
+                speed_pending: false,
                 live: false,
                 error: Some(e),
             }
@@ -119,6 +125,8 @@ impl VideoSource {
             size: None,
             looping,
             playing: true,
+            speed: 1.0,
+            speed_pending: false,
             live,
             error: None,
         })
@@ -183,6 +191,20 @@ impl VideoSource {
         Self::start(pipeline, latest, false, true, &format!("{} {device}", t("kameran", "camera")))
     }
 
+    /// Söker till nuvarande läge med ny hastighet – men först när pipelinen
+    /// har startat; tidigare avvisas sökningen.
+    fn apply_pending_speed(&mut self) {
+        if !self.speed_pending {
+            return;
+        }
+        let Some(at) = self.position() else { return };
+        if self.pipeline.current_state() < gst::State::Paused {
+            return;
+        }
+        self.speed_pending = false;
+        self.seek(at);
+    }
+
     fn handle_bus(&mut self) {
         let Some(bus) = self.pipeline.bus() else { return };
         while let Some(msg) = bus.pop() {
@@ -216,6 +238,7 @@ impl MediaSource for VideoSource {
             return;
         }
         self.handle_bus();
+        self.apply_pending_speed();
         let Some(sample) = self.latest.lock().unwrap().take() else { return };
         let (Some(buffer), Some(caps)) = (sample.buffer(), sample.caps()) else { return };
         let Ok(info) = gst_video::VideoInfo::from_caps(caps) else { return };
@@ -277,9 +300,23 @@ impl MediaSource for VideoSource {
             return;
         }
         let t = gst::ClockTime::from_nseconds((seconds.max(0.0) * 1e9) as u64);
-        let _ = self
-            .pipeline
-            .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, t);
+        let _ = self.pipeline.seek(
+            self.speed,
+            gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+            gst::SeekType::Set,
+            t,
+            gst::SeekType::None,
+            gst::ClockTime::NONE,
+        );
+    }
+
+    fn set_speed(&mut self, speed: f64) {
+        if self.live || (speed - self.speed).abs() < 1e-6 {
+            return;
+        }
+        self.speed = speed;
+        self.speed_pending = true;
+        self.apply_pending_speed();
     }
 
     fn position(&self) -> Option<f64> {

@@ -3,6 +3,7 @@
 //!   cargo run -p lm-media --example probe -- camera /dev/video0
 //!   cargo run -p lm-media --example probe -- stream udp://127.0.0.1:5000
 //!   cargo run -p lm-media --example probe -- file video.mp4
+//!   cargo run -p lm-media --example probe -- file video.mp4 2.0   (med hastighet)
 //!   cargo run -p lm-media --example probe -- cameras
 
 use lm_media::{MediaSource, VideoSource};
@@ -21,7 +22,13 @@ fn main() {
         }
         Some("camera") => VideoSource::camera(target),
         Some("stream") => VideoSource::stream(target, true),
-        Some("file") => VideoSource::open(std::path::Path::new(target), false, true),
+        Some("file") => {
+            let mut v = VideoSource::open(std::path::Path::new(target), false, true);
+            if let Some(speed) = args.get(2).and_then(|s| s.parse().ok()) {
+                v.set_speed(speed);
+            }
+            v
+        }
         _ => {
             eprintln!("Användning: probe camera|stream|file <adress>  eller  probe cameras");
             std::process::exit(2);
@@ -45,6 +52,9 @@ fn main() {
             if frames == 120 {
                 let fps = 90.0 / measure.unwrap().elapsed().as_secs_f32();
                 println!("{fps:.1} bildrutor/s");
+                if let Some(pos) = src.position() {
+                    println!("Spelat {pos:.2} s video på {:.2} s", start.elapsed().as_secs_f32());
+                }
                 return;
             }
         }

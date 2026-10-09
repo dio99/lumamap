@@ -4,7 +4,7 @@
 use crate::app::LumaApp;
 use lm_core::i18n::t;
 use lm_control::{name_matches, ControlMsg, OscServer};
-use lm_core::{cue_start, fade_frame, Command, CueId, FadeStep, SourceId, SurfaceId};
+use lm_core::{cue_start, fade_frame, Command, CueId, FadeStep, SourceId, SourceKind, SurfaceId};
 use std::time::{Duration, Instant};
 
 /// En pågående övergång till en cue.
@@ -124,7 +124,9 @@ impl LumaApp {
 
     fn handle_control(&mut self, msg: ControlMsg) {
         match msg {
-            ControlMsg::SourcePlay(n) | ControlMsg::SourcePause(n) | ControlMsg::SourceSeek(n, _) if self.find_source(&n).is_none() => {
+            ControlMsg::SourcePlay(n) | ControlMsg::SourcePause(n) | ControlMsg::SourceSeek(n, _) | ControlMsg::SourceSpeed(n, _)
+                if self.find_source(&n).is_none() =>
+            {
                 log::warn!("OSC: {} {n}", t("okänd källa", "unknown source"));
             }
             ControlMsg::SourcePlay(n) => {
@@ -143,6 +145,15 @@ impl LumaApp {
                 let id = self.find_source(&n);
                 if let Some(m) = id.and_then(|id| self.media.get_mut(id)) {
                     m.seek(t);
+                }
+            }
+            ControlMsg::SourceSpeed(n, v) => {
+                let Some(id) = self.find_source(&n) else { return };
+                let Some(mut src) = self.project.source(id).cloned() else { return };
+                if let SourceKind::Video { speed, .. } = &mut src.kind {
+                    *speed = v;
+                    let gesture = self.osc_gesture(id.0);
+                    self.exec(Command::ReplaceSource(src), Some(gesture));
                 }
             }
             ControlMsg::SurfaceOpacity(n, v) => self.osc_surface(&n, |s| s.opacity = v),
@@ -166,11 +177,17 @@ impl LumaApp {
         };
         let Some(mut s) = self.project.surface(id).cloned() else { return };
         f(&mut s);
+        let gesture = self.osc_gesture(id.0);
+        self.exec(Command::ReplaceSurface(s), Some(gesture));
+    }
+
+    /// Samma gest-nummer så länge OSC rör samma yta eller källa i en följd.
+    fn osc_gesture(&mut self, id: u32) -> u64 {
         let gesture = match self.osc_gestures.get(&id) {
             Some((g, at)) if at.elapsed() < OSC_GESTURE_GAP => *g,
             _ => self.new_gesture(),
         };
         self.osc_gestures.insert(id, (gesture, Instant::now()));
-        self.exec(Command::ReplaceSurface(s), Some(gesture));
+        gesture
     }
 }
