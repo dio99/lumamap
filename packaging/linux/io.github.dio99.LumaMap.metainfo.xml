@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.dio99.LumaMap</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <name>LumaMap</name>
+  <summary>Projection mapping for walls, pillars and buildings</summary>
+  <summary xml:lang="sv">Videomappning för väggar, pelare och byggnader</summary>
+  <developer id="io.github.dio99">
+    <name>Anders Larsson</name>
+  </developer>
+  <description>
+    <p>
+      Put video on any surface by dragging its corners until it fits. What you
+      see in the editor is what the projector shows.
+    </p>
+    <ul>
+      <li>Quad, triangle, ellipse and curved mesh surfaces</li>
+      <li>Video files, images, webcams and network streams</li>
+      <li>Masks with soft edges, blend modes and colour correction</li>
+      <li>Several projectors with keystone and edge blending</li>
+      <li>Cues with fades, OSC and MIDI remote control</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.dio99.LumaMap.desktop</launchable>
+  <url type="homepage">https://github.com/dio99/lumamap</url>
+  <url type="bugtracker">https://github.com/dio99/lumamap/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/dio99/lumamap/main/docs/showcase.jpg</image>
+      <caption>An example show</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/dio99/lumamap/main/docs/screenshot.jpg</image>
+      <caption>The editor</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.4.0" date="2026-10-09"/>
+  </releases>
+</component>

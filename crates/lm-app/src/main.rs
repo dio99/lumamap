@@ -38,7 +38,9 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("LumaMap")
-            .with_app_id("lumamap")
+            // Samma id som .desktop-filen, så att skrivbordet visar rätt ikon.
+            .with_app_id("io.github.dio99.LumaMap")
+            .with_icon(std::sync::Arc::new(icon()))
             .with_inner_size([1400.0, 860.0])
             .with_min_inner_size([900.0, 560.0])
             .with_drag_and_drop(true),
@@ -49,4 +51,13 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| Ok(Box::new(LumaApp::new(cc, startup).map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?))),
     )
+}
+
+/// Fönsterikonen (samma som i packaging/linux).
+fn icon() -> egui::IconData {
+    let img = image::load_from_memory(include_bytes!("../../../packaging/linux/io.github.dio99.LumaMap.png"))
+        .map(|i| i.to_rgba8())
+        .expect("ikonen ska gå att läsa");
+    let (width, height) = img.dimensions();
+    egui::IconData { rgba: img.into_raw(), width, height }
 }

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=LumaMap
+GenericName=Projection Mapping
+GenericName[sv]=Videomappning
+Comment=Map video onto walls, pillars and buildings with one or more projectors
+Comment[sv]=Projicera video på väggar, pelare och byggnader med en eller flera projektorer
+Exec=lumamap %f
+Icon=io.github.dio99.LumaMap
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=projection;mapping;projector;video;VJ;
+Keywords[sv]=projektion;mappning;projektor;video;VJ;
+MimeType=application/x-lumamap;
+StartupWMClass=io.github.dio99.LumaMap

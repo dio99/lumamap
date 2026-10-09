@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1030"/>
+      <stop offset="1" stop-color="#0a0614"/>
+    </linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4fa3"/>
+      <stop offset="0.5" stop-color="#9b5cff"/>
+      <stop offset="1" stop-color="#21d4fd"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+  <!-- Ljuskäglan från projektorn -->
+  <polygon points="44,206 104,58 222,78 210,186" fill="url(#beam)"/>
+  <!-- Den mappade ytan, i perspektiv -->
+  <polygon points="104,58 222,78 210,186 120,170" fill="url(#wall)"/>
+  <polygon points="104,58 222,78 210,186 120,170" fill="none" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="#ffffff" stroke="#21d4fd" stroke-width="4">
+    <circle cx="104" cy="58" r="9"/>
+    <circle cx="222" cy="78" r="9"/>
+    <circle cx="210" cy="186" r="9"/>
+    <circle cx="120" cy="170" r="9"/>
+  </g>
+  <!-- Projektorn -->
+  <rect x="22" y="192" width="50" height="32" rx="8" fill="#e8e8f0"/>
+  <circle cx="58" cy="208" r="10" fill="#21d4fd" stroke="#1b1030" stroke-width="4"/>
+</svg>

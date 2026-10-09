@@ -36,7 +36,17 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 
 ## Install
 
-There are no packages yet, so build from source.
+### AppImage
+
+Build a self-contained AppImage (GStreamer included) that runs on most
+Linux distributions:
+
+```bash
+packaging/appimage/build.sh
+./target/appimage/LumaMap-x86_64.AppImage
+```
+
+### From source
 
 **1. System libraries** (Debian, Ubuntu, Linux Mint):
 

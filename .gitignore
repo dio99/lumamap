@@ -1,2 +1,3 @@
 target/
 *.lmap.autosave
+/packaging/appimage/tools/
