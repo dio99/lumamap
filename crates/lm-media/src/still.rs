@@ -100,6 +100,7 @@ impl MediaSource for StillSource {
                 height: px.height,
                 stride: px.width * 4,
                 data: &px.data,
+                format: crate::PixelFormat::Rgba,
             });
             self.uploaded = true;
         }

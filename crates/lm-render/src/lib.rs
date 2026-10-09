@@ -13,6 +13,7 @@ use egui::TextureId;
 pub use egui_wgpu;
 
 mod edge;
+mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
@@ -66,6 +67,8 @@ struct GpuTexture {
     bind_group: wgpu::BindGroup,
     size: [u32; 2],
     egui_id: TextureId,
+    /// Plan för YUV-video som räknas om till `texture` på GPU:n.
+    yuv: Option<yuv::YuvPlanes>,
 }
 
 struct GpuOutput {
@@ -114,6 +117,7 @@ pub struct Renderer {
     test: GpuTexture,
     outputs: HashMap<OutputId, GpuOutput>,
     edge: edge::EdgePass,
+    yuv: yuv::YuvConverter,
 }
 
 impl Renderer {
@@ -219,6 +223,7 @@ impl Renderer {
                 height: th,
                 stride: tw * 4,
                 data: &pattern,
+                format: lm_media::PixelFormat::Rgba,
             },
         );
 
@@ -237,6 +242,7 @@ impl Renderer {
             test,
             outputs: HashMap::new(),
             edge: edge::EdgePass::new(device, FORMAT, MSAA),
+            yuv: yuv::YuvConverter::new(device, FORMAT),
         }
     }
 
@@ -255,7 +261,11 @@ impl Renderer {
             let tex = make_texture(device, &self.tex_layout, &self.sampler, egui, size, reuse);
             self.sources.insert(id, tex);
         }
-        write_frame(queue, &self.sources[&id].texture, frame);
+        let tex = self.sources.get_mut(&id).unwrap();
+        match frame.format {
+            lm_media::PixelFormat::Rgba => write_frame(queue, &tex.texture, frame),
+            _ => self.yuv.convert(device, queue, &mut tex.yuv, frame, &tex.texture),
+        }
     }
 
     pub fn remove_source(&mut self, egui: &mut egui_wgpu::Renderer, id: SourceId) {
@@ -587,7 +597,8 @@ fn make_texture(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: FORMAT,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        // RENDER_ATTACHMENT: YUV-video räknas om till den här texturen på GPU:n.
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
@@ -611,6 +622,7 @@ fn make_texture(
         bind_group,
         size,
         egui_id,
+        yuv: None,
     }
 }
 
@@ -696,6 +708,7 @@ mod tests {
         for (name, src) in [
             ("surface.wgsl", include_str!("../../../shaders/surface.wgsl")),
             ("edge_blend.wgsl", include_str!("../../../shaders/edge_blend.wgsl")),
+            ("yuv.wgsl", include_str!("../../../shaders/yuv.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(name)));
             naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default())

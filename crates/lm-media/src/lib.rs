@@ -5,15 +5,98 @@ mod still;
 mod video;
 
 pub use still::{test_pattern, StillSource};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn convert(c: YuvColor, yuv: [f32; 3]) -> [f32; 3] {
+        let (m, o) = c.to_rgb();
+        let d = [yuv[0] - o[0], yuv[1] - o[1], yuv[2] - o[2]];
+        [0, 1, 2].map(|r| m[0][r] * d[0] + m[1][r] * d[1] + m[2][r] * d[2])
+    }
+
+    fn close(a: [f32; 3], b: [f32; 3]) -> bool {
+        a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.01)
+    }
+
+    #[test]
+    fn video_range_black_white_and_red() {
+        let c = YuvColor { matrix: YuvMatrix::Bt709, full_range: false };
+        assert!(close(convert(c, [16.0 / 255.0, 0.5, 0.5]), [0.0, 0.0, 0.0]));
+        assert!(close(convert(c, [235.0 / 255.0, 0.5, 0.5]), [1.0, 1.0, 1.0]));
+        // Rent rött i BT.709, begränsat omfång: Y=63, U=102, V=240.
+        assert!(close(convert(c, [63.0 / 255.0, 102.0 / 255.0, 240.0 / 255.0]), [1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn full_range_bt601() {
+        let c = YuvColor { matrix: YuvMatrix::Bt601, full_range: true };
+        assert!(close(convert(c, [1.0, 0.5, 0.5]), [1.0, 1.0, 1.0]));
+        // Rent grönt i BT.601, fullt omfång: Y=150, U=44, V=21.
+        assert!(close(convert(c, [150.0 / 255.0, 44.0 / 255.0, 21.0 / 255.0]), [0.0, 1.0, 0.0]));
+    }
+}
 pub use video::VideoSource;
 
-/// En bildruta i RGBA8 (sRGB) som renderaren kan ladda upp till GPU:n.
+/// En bildruta som renderaren kan ladda upp till GPU:n.
 pub struct FrameView<'a> {
     pub width: u32,
     pub height: u32,
-    /// Byte per rad (kan vara större än `width * 4`).
+    /// Byte per rad i `data` (kan vara större än bredden kräver).
     pub stride: u32,
+    /// RGBA-pixlar, eller luminansplanet (Y) för YUV-format.
     pub data: &'a [u8],
+    pub format: PixelFormat<'a>,
+}
+
+/// Bildrutans pixelformat. Video lämnas helst som YUV direkt från avkodaren:
+/// det sparar en konvertering på CPU:n och mer än halverar uppladdningen.
+pub enum PixelFormat<'a> {
+    Rgba,
+    /// Färgen i ett plan med U och V växelvis, halv upplösning åt båda håll.
+    Nv12 { uv: &'a [u8], uv_stride: u32, color: YuvColor },
+    /// Färgen i två plan, U och V, halv upplösning åt båda håll.
+    I420 { u: &'a [u8], u_stride: u32, v: &'a [u8], v_stride: u32, color: YuvColor },
+}
+
+/// Hur YUV ska räknas om till RGB.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct YuvColor {
+    pub matrix: YuvMatrix,
+    /// 0–255 i stället för det vanliga videoomfånget 16–235.
+    pub full_range: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum YuvMatrix {
+    Bt601,
+    Bt709,
+    Bt2020,
+}
+
+impl YuvColor {
+    /// Matris (kolumnvis) och förskjutning: `rgb = M · (yuv − offset)`.
+    pub fn to_rgb(&self) -> ([[f32; 3]; 3], [f32; 3]) {
+        let (kr, kb) = match self.matrix {
+            YuvMatrix::Bt601 => (0.299, 0.114),
+            YuvMatrix::Bt709 => (0.2126, 0.0722),
+            YuvMatrix::Bt2020 => (0.2627, 0.0593),
+        };
+        let kg = 1.0 - kr - kb;
+        let (sy, sc, oy) = if self.full_range {
+            (1.0, 1.0, 0.0)
+        } else {
+            (255.0 / 219.0, 255.0 / 224.0, 16.0 / 255.0)
+        };
+        let cr_r = 2.0 * (1.0 - kr);
+        let cb_b = 2.0 * (1.0 - kb);
+        let cb_g = -2.0 * kb * (1.0 - kb) / kg;
+        let cr_g = -2.0 * kr * (1.0 - kr) / kg;
+        // Kolumner: bidrag från Y, U (Cb) och V (Cr).
+        let m = [[sy, sy, sy], [0.0, cb_g * sc, cb_b * sc], [cr_r * sc, cr_g * sc, 0.0]];
+        (m, [oy, 128.0 / 255.0, 128.0 / 255.0])
+    }
 }
 
 pub trait MediaSource: Send {

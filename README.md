@@ -170,6 +170,10 @@ cargo run -p lm-media --example probe -- stream rtsp://camera.local/stream
 It prints when the first frame arrives and the frame rate. More detail:
 `RUST_LOG=info lumamap`.
 
+Video is uploaded as YUV straight from the decoder and converted to RGB on
+the GPU. If colours ever look wrong with a particular video, compare with
+the slower CPU conversion: `LUMAMAP_VIDEO_FORMAT=rgba lumamap`.
+
 ## Development
 
 ```bash
@@ -189,7 +193,7 @@ The code is a Cargo workspace:
 | `lm-app` | The application: windows, egui editor. |
 
 [ARCHITECTURE.md](ARCHITECTURE.md) (in Swedish) describes the design and the
-roadmap. Next up: packaging (AppImage/Flatpak), faster 4K video, MIDI.
+roadmap. Next up: packaging (AppImage/Flatpak), zero-copy video, MIDI.
 
 ## License
 

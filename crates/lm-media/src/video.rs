@@ -13,6 +13,35 @@ use gstreamer_video::prelude::*;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+/// Format som tas emot från GStreamer, i den ordning de föredras. YUV direkt
+/// från avkodaren slipper konvertering på CPU:n; GPU:n räknar om till RGB.
+/// `LUMAMAP_VIDEO_FORMAT=rgba` tvingar den gamla vägen (för felsökning).
+fn accepted_formats() -> Vec<gst_video::VideoFormat> {
+    use gst_video::VideoFormat::*;
+    if std::env::var("LUMAMAP_VIDEO_FORMAT").is_ok_and(|v| v.eq_ignore_ascii_case("rgba")) {
+        vec![Rgba]
+    } else {
+        vec![Nv12, I420, Rgba]
+    }
+}
+
+fn yuv_color(info: &gst_video::VideoInfo) -> crate::YuvColor {
+    use gst_video::{VideoColorMatrix as M, VideoColorRange as R};
+    let c = info.colorimetry();
+    let matrix = match c.matrix() {
+        M::Bt601 | M::Smpte240m | M::Fcc => crate::YuvMatrix::Bt601,
+        M::Bt709 => crate::YuvMatrix::Bt709,
+        M::Bt2020 => crate::YuvMatrix::Bt2020,
+        // Okänt: samma gissning som de flesta spelare – HD är BT.709.
+        _ if info.height() >= 720 => crate::YuvMatrix::Bt709,
+        _ => crate::YuvMatrix::Bt601,
+    };
+    crate::YuvColor {
+        matrix,
+        full_range: c.range() == R::Range0_255,
+    }
+}
+
 /// Kameror begränsas till högst Full HD – mer behövs inte för projektion
 /// och avkodningen av t.ex. 2592×1944 MJPEG blir onödigt tung.
 const CAMERA_CAPS: &str = "image/jpeg,width=[1,1920],height=[1,1080];video/x-raw,width=[1,1920],height=[1,1080]";
@@ -62,7 +91,7 @@ impl VideoSource {
 
     /// Kopplar appsink så att bara den senaste bildrutan sparas.
     fn configure_sink(sink: &gst_app::AppSink, sync: bool) -> Slot {
-        sink.set_caps(Some(&gst_video::VideoCapsBuilder::new().format(gst_video::VideoFormat::Rgba).build()));
+        sink.set_caps(Some(&gst_video::VideoCapsBuilder::new().format_list(accepted_formats()).build()));
         sink.set_max_buffers(1);
         sink.set_drop(true);
         sink.set_sync(sync);
@@ -193,12 +222,25 @@ impl MediaSource for VideoSource {
         let Ok(frame) = gst_video::VideoFrameRef::from_buffer_ref_readable(buffer, &info) else { return };
         let Ok(data) = frame.plane_data(0) else { return };
         let (w, h) = (frame.width(), frame.height());
+        let strides = frame.plane_stride();
+        let format = match info.format() {
+            gst_video::VideoFormat::Nv12 => {
+                let Ok(uv) = frame.plane_data(1) else { return };
+                crate::PixelFormat::Nv12 { uv, uv_stride: strides[1] as u32, color: yuv_color(&info) }
+            }
+            gst_video::VideoFormat::I420 => {
+                let (Ok(u), Ok(v)) = (frame.plane_data(1), frame.plane_data(2)) else { return };
+                crate::PixelFormat::I420 { u, u_stride: strides[1] as u32, v, v_stride: strides[2] as u32, color: yuv_color(&info) }
+            }
+            _ => crate::PixelFormat::Rgba,
+        };
         self.size = Some([w, h]);
         f(FrameView {
             width: w,
             height: h,
-            stride: frame.plane_stride()[0] as u32,
+            stride: strides[0] as u32,
             data,
+            format,
         });
     }
 
