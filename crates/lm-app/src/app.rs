@@ -91,6 +91,10 @@ pub struct LumaApp {
     /// Tempo uppmätt från ljudet, när det finns ett stabilt.
     pub audio_bpm: Option<f32>,
     pub audio_level: f32,
+    pub calibration: Option<crate::calib::Calibration>,
+    /// Utgången som kalibreringsfönstret är öppet för.
+    pub calibration_window_for: Option<OutputId>,
+    pub calibration_camera: Option<String>,
     /// Fönstrets titel, så att den bara skickas när den ändras.
     pub window_title: String,
     /// För taktslagsuret: när förra bildrutan ritades.
@@ -158,6 +162,9 @@ impl LumaApp {
             audio_bpm: None,
             audio_level: 0.0,
             window_title: String::new(),
+            calibration: None,
+            calibration_window_for: None,
+            calibration_camera: None,
             last_frame: Instant::now(),
             taps: Vec::new(),
             tap_gesture: None,
@@ -752,7 +759,9 @@ impl LumaApp {
                         );
                         ui.painter().galley(at, galley, egui::Color32::WHITE);
                     }
-                    if self.show_mode {
+                    // Under kalibrering visar projektorn bara punkterna, inga handtag.
+                    let calibrating = self.opts.calibration.is_some_and(|(o, _)| o == id);
+                    if self.show_mode || calibrating {
                         if ui.rect_contains_pointer(rect) {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                         }
@@ -846,6 +855,9 @@ impl eframe::App for LumaApp {
             self.current_output = self.project.outputs[0].id;
         }
 
+        // Kalibrering med kamera bestämmer vad projektorn visar, så den går först.
+        self.tick_calibration(&ctx);
+
         // 1. Media → GPU, och rendera alla utgångar.
         if let Some(rs) = frame.wgpu_render_state() {
             let mut egui_renderer = rs.renderer.write();
@@ -886,6 +898,7 @@ impl eframe::App for LumaApp {
         self.editor_ui(ui);
         self.output_windows(&ctx);
         self.osc_window(&ctx);
+        self.calibration_window(&ctx);
         self.midi_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();

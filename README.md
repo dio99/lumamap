@@ -95,7 +95,10 @@ The binary ends up in `target/release/lumamap`.
 3. Drag the projector window onto the projector and press **F** for fullscreen.
 4. Press **▶ Show** (or **Tab**) to hide the handles.
 
-Use **⊞ Test pattern** while aligning. Save with **Ctrl+S**; projects are
+Use **⊞ Test pattern** while aligning. With a webcam you can let LumaMap do
+the aligning: select the output and click **📷 Align with camera…**. The
+projector shows nine dots that the camera finds; then click the wall's four
+corners in the camera picture and the surface lands exactly there. Save with **Ctrl+S**; projects are
 `.lmap` files with media paths relative to the project file. To move a show
 to another computer, use ☰ → **Collect project…**: it copies the project and
 every media file it uses into one folder.

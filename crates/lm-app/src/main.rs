@@ -6,6 +6,7 @@
 //!   lumamap --play show.lmap  starta direkt i Visa-läge med projektorn i helskärm
 
 mod app;
+mod calib;
 mod canvas;
 mod panels;
 mod pool;

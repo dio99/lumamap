@@ -1211,6 +1211,16 @@ impl LumaApp {
                 o.keystone = UNIT_QUAD;
             }
         });
+        if ui
+            .button(t("📷 Rikta in med kamera…", "📷 Align with camera…"))
+            .on_hover_text(t(
+                "Kameran hittar projektorbilden; klicka sedan på väggens hörn i kamerabilden",
+                "The camera finds the projection; then click the wall's corners in the camera picture",
+            ))
+            .clicked()
+        {
+            self.calibration_window_for = Some(before.id);
+        }
 
         ui.add_space(8.0);
         ui.label(RichText::new(t("Kantblandning", "Edge blending")).strong())

@@ -1,5 +1,7 @@
 //! Geometri för mappning: homografi (perspektivtransform) och träfftest.
 
+pub mod calibrate;
+
 pub type Pt = [f32; 2];
 
 /// 3×3-matris, radmajor: `[x', y', w'] = H · [x, y, 1]`.
@@ -72,7 +74,7 @@ impl Homography {
 }
 
 /// Gausselimination med pivotering för 8×8-system (sista kolumnen = högerled).
-fn solve8(mut a: [[f64; 9]; 8]) -> Option<[f64; 8]> {
+pub(crate) fn solve8(mut a: [[f64; 9]; 8]) -> Option<[f64; 8]> {
     for col in 0..8 {
         let pivot = (col..8).max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))?;
         if a[pivot][col].abs() < 1e-12 {

@@ -40,10 +40,19 @@ struct SurfaceUniform {
 type Vertex = [f32; 4];
 const VERTEX_SIZE: u64 = 16;
 
-/// Ett ritanrop: vilken utgång, vilken textur (`None` = testbild), uniform och hörn.
+/// Vilken textur ett ritanrop använder.
+#[derive(Clone, Copy)]
+enum Tex {
+    Source(SourceId),
+    Test,
+    /// Helvit, för kalibreringspunkter.
+    White,
+}
+
+/// Ett ritanrop: vilken utgång, vilken textur, uniform och hörn.
 struct Draw {
     output: OutputId,
-    texture: Option<SourceId>,
+    texture: Tex,
     blend: BlendMode,
     uniform: SurfaceUniform,
     vertices: Range<u32>,
@@ -99,6 +108,8 @@ pub struct RenderOptions {
     pub beats: f64,
     /// Ljudets basnivå 0..1 (för effekter som följer ljudet).
     pub audio: f32,
+    /// Kalibrering med kamera: utgången visas svart med (högst) en vit punkt.
+    pub calibration: Option<(OutputId, Option<[f32; 2]>)>,
 }
 
 impl Default for RenderOptions {
@@ -110,6 +121,7 @@ impl Default for RenderOptions {
             master: 1.0,
             beats: 0.0,
             audio: 0.0,
+            calibration: None,
         }
     }
 }
@@ -128,6 +140,7 @@ pub struct Renderer {
     vertex_capacity: u64,
     sources: HashMap<SourceId, GpuTexture>,
     test: GpuTexture,
+    white: GpuTexture,
     outputs: HashMap<OutputId, GpuOutput>,
     edge: edge::EdgePass,
     yuv: yuv::YuvConverter,
@@ -229,6 +242,18 @@ impl Renderer {
 
         let (tw, th) = (1024, 1024);
         let pattern = lm_media::test_pattern(tw, th);
+        let white = make_texture(device, &tex_layout, &sampler, egui, [1, 1], None);
+        write_frame(
+            queue,
+            &white.texture,
+            &FrameView {
+                width: 1,
+                height: 1,
+                stride: 4,
+                data: &[255; 4],
+                format: lm_media::PixelFormat::Rgba,
+            },
+        );
         let test = make_texture(device, &tex_layout, &sampler, egui, [tw, th], None);
         write_frame(
             queue,
@@ -255,6 +280,7 @@ impl Renderer {
             vertex_capacity,
             sources: HashMap::new(),
             test,
+            white,
             outputs: HashMap::new(),
             edge: edge::EdgePass::new(device, FORMAT, MSAA),
             yuv: yuv::YuvConverter::new(device, FORMAT),
@@ -374,14 +400,28 @@ impl Renderer {
         let mut draws: Vec<Draw> = Vec::new();
         let mut vertices: Vec<Vertex> = Vec::new();
         for out in &project.outputs {
+            let keystone = (out.keystone != UNIT_QUAD).then(|| Homography::from_points(&UNIT_QUAD, &out.keystone)).flatten();
+            // Kalibrering med kamera: svart utgång och högst en vit punkt.
+            if let Some((cal_out, dot)) = opts.calibration {
+                if cal_out == out.id {
+                    if let Some(p) = dot {
+                        let r = 0.03;
+                        let rx = r * out.resolution[1] as f32 / out.resolution[0].max(1) as f32;
+                        let quad = [[p[0] - rx, p[1] - r], [p[0] + rx, p[1] - r], [p[0] + rx, p[1] + r], [p[0] - rx, p[1] + r]];
+                        if let Some(geo) = quad_geometry(&quad, &UNIT_QUAD, 1.0, true, keystone.as_ref()) {
+                            push_draw(&mut draws, &mut vertices, out.id, Tex::White, BlendMode::Normal, geo);
+                        }
+                    }
+                    continue;
+                }
+            }
             if opts.blackout {
                 continue;
             }
-            let keystone = (out.keystone != UNIT_QUAD).then(|| Homography::from_points(&UNIT_QUAD, &out.keystone)).flatten();
             let warp = keystone.as_ref();
             if opts.output_test {
                 let Some(geo) = quad_geometry(&UNIT_QUAD, &UNIT_QUAD, 1.0, false, warp) else { continue };
-                push_draw(&mut draws, &mut vertices, out.id, None, BlendMode::Normal, geo);
+                push_draw(&mut draws, &mut vertices, out.id, Tex::Test, BlendMode::Normal, geo);
                 continue;
             }
             for s in project.surfaces.iter().filter(|s| s.output == out.id && s.visible) {
@@ -397,6 +437,7 @@ impl Renderer {
                     geo.0.color = [c.brightness, c.contrast, c.gamma.max(0.05), c.saturation];
                     geo.0.res[3] = c.hue.to_radians();
                     apply_effect(&mut geo.0, s, opts);
+                    let tex = tex.map_or(Tex::Test, Tex::Source);
                     push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }
@@ -456,8 +497,9 @@ impl Renderer {
                     continue;
                 }
                 let bg = match d.texture {
-                    Some(id) => &self.sources[&id].bind_group,
-                    None => &self.test.bind_group,
+                    Tex::Source(id) => &self.sources[&id].bind_group,
+                    Tex::Test => &self.test.bind_group,
+                    Tex::White => &self.white.bind_group,
                 };
                 pass.set_pipeline(&self.pipelines[d.blend as usize]);
                 pass.set_bind_group(0, &self.uniform_bg, &[(i as u64 * self.uniform_stride) as u32]);
@@ -505,7 +547,7 @@ fn push_draw(
     draws: &mut Vec<Draw>,
     vertices: &mut Vec<Vertex>,
     output: OutputId,
-    texture: Option<SourceId>,
+    texture: Tex,
     blend: BlendMode,
     (uniform, verts): (SurfaceUniform, Vec<Vertex>),
 ) {
