@@ -103,15 +103,16 @@ Principer:
 lumamap/
 ├── Cargo.toml                 (workspace)
 ├── crates/
-│   ├── lm-core/               Datamodell, Command, Undo, serialisering. Ingen GPU.
-│   ├── lm-geom/               Homografi, mesh-warp, punkt-i-polygon, hit-test.
-│   ├── lm-media/              GStreamer-källor, bild, färg, testmönster.
-│   ├── lm-render/             wgpu-pipeline, shaders, utgångar, edge blend.
-│   ├── lm-control/            OSC-server (MIDI senare).
-│   └── lm-app/                main(): fönster, egui-editor, limmar ihop allt.
+│   ├── lm-core/               Datamodell, Command, Undo, cues, MIDI-kopplingar, DMX, i18n. Ingen GPU.
+│   ├── lm-geom/               Homografi, mesh-splines, hit-test, kamerakalibrering.
+│   ├── lm-media/              GStreamer-källor (fil, kamera, ström), bild, ljudanalys.
+│   ├── lm-render/             wgpu: ytor, effekter, mönster, YUV, edge blend.
+│   ├── lm-control/            OSC-server, rå MIDI, Art-Net.
+│   └── lm-app/                main(): fönster, egui-editor, showstyrning, kalibrering.
 ├── shaders/                   WGSL
-├── assets/                    Ikoner, testbilder
-└── examples/                  Exempelprojekt (.lmap)
+├── packaging/                 .desktop, ikon, AppImage, Flatpak
+├── docs/                      Bilder till README
+└── examples/                  Exempelprojekt (.lmap) och media/ (genererade loopar)
 ```
 
 Beroenderiktning (inga cykler):
@@ -304,7 +305,10 @@ huvudtråden – exakt samma väg som musen.
 
 Utöver planen har också tillkommit: färgjustering per yta, keystone per
 utgång, uppspelningshastighet, svartnivåkompensation, "Samla projekt",
-svenskt och engelskt gränssnitt samt tio procedurgenererade exempelvideor.
+svenskt och engelskt gränssnitt, effekter per yta i takt med ett tap-tempo,
+mönsterkällor som ritas på GPU:n, ljudreaktiva effekter, inriktning med
+webbkamera, DMX-ljus via Art-Net samt 21 procedurgenererade exempelvideor
+(bl.a. jul och halloween) med färdiga exempelprojekt.
 
 **Zero-copy** (DMA-BUF från VA-API/NVDEC direkt in i Vulkan) är flyttad till
 "Senare": wgpu saknar stöd för att importera externt minne, så det kräver

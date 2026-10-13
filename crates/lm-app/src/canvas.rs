@@ -308,6 +308,7 @@ impl LumaApp {
                 dash(egui::pos2(rect.min.x, y1), egui::pos2(rect.max.x, y1));
             }
         }
+        let mut labels: Vec<Rect> = Vec::new();
         for id in self.canvas_surfaces(kind) {
             let Some(s) = self.project.surface(id) else { continue };
             let pts: Vec<Pos2> = self.points(id, kind).unwrap_or_default().iter().map(|p| v.pt(*p)).collect();
@@ -358,18 +359,20 @@ impl LumaApp {
                     painter.add(egui::Shape::line(line, thin));
                 }
             }
-            painter.add(egui::Shape::closed_line(outline, Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
+            painter.add(egui::Shape::closed_line(outline.clone(), Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
 
-            if matches!(kind, PtKind::Dst(_)) {
-                let c = lm_geom::centroid(self.points(id, kind).unwrap_or_default());
-                let label = if s.source.is_none() { format!("{}\n({})", s.name, t("ingen media", "no media")) } else { s.name.clone() };
-                painter.text(
-                    v.pt(c),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(14.0),
-                    color,
-                );
+            // Namnet uppe till vänster i ytan (dolda ytor får bara konturen).
+            // Namn som skulle hamna på varandra flyttas ned en rad.
+            if matches!(kind, PtKind::Dst(_)) && (s.visible || selected) {
+                let label = if s.source.is_none() { format!("{} ({})", s.name, t("ingen media", "no media")) } else { s.name.clone() };
+                let galley = painter.layout_no_wrap(label, egui::FontId::proportional(14.0), color);
+                let min = outline.iter().fold(egui::pos2(f32::MAX, f32::MAX), |m, p| m.min(*p));
+                let mut at = (min + egui::vec2(8.0, 6.0)).max(rect.min + egui::vec2(4.0, 4.0));
+                while labels.iter().any(|r: &Rect| r.intersects(Rect::from_min_size(at, galley.size()))) {
+                    at.y += galley.size().y + 2.0;
+                }
+                labels.push(Rect::from_min_size(at, galley.size()));
+                painter.galley(at, galley, color);
             }
 
             for (i, p) in pts.iter().enumerate() {

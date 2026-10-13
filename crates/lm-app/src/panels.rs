@@ -244,13 +244,16 @@ impl LumaApp {
                 .as_ref()
                 .filter(|(_, t)| t.elapsed() < Duration::from_secs(6))
                 .map(|(m, _)| m.clone());
-            match msg {
-                Some(m) => ui.label(RichText::new(m).color(ACCENT)),
-                None => ui.label(
-                    RichText::new(t("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort", "Drag the corners with the mouse  •  Arrows nudge (Shift = 10 px)  •  C = next corner  •  Space = play/pause  •  Del = delete"))
-                        .color(Color32::from_gray(140)),
-                ),
+            let text = match msg {
+                Some(m) => RichText::new(m).color(ACCENT),
+                None => RichText::new(t("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort", "Drag the corners with the mouse  •  Arrows nudge (Shift = 10 px)  •  C = next corner  •  Space = play/pause  •  Del = delete"))
+                    .color(Color32::from_gray(140)),
             };
+            // Lämna plats åt statusen till höger; kortas av med "…" i smala fönster.
+            let width = (ui.available_width() - 360.0).max(80.0);
+            ui.allocate_ui(egui::vec2(width, ui.available_height()), |ui| {
+                ui.add(egui::Label::new(text).truncate());
+            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (text, color) = match (&self.osc, &self.osc_error) {
                     (Some(s), _) => (format!("OSC :{}", s.port()), Color32::from_rgb(120, 200, 120)),

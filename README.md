@@ -1,46 +1,59 @@
 # LumaMap
 
 Projection mapping for Linux. Put video on any surface – a wall, a pillar, a
-gable – by dragging its corners until it fits. In the spirit of
-[MapMap](https://mapmap.info) (simple and visual) and
+gable, a whole house – by dragging its corners until it fits. In the spirit
+of [MapMap](https://mapmap.info) (simple and visual) and
 [Splash](https://sat-mtl.gitlab.io/documentation/splash/) (several projectors
 with edge blending).
 
 The goal: *map a video onto a wall in two minutes without reading a manual.*
 
-![Example show: fire on a triangle, space on a curved pillar, aurora in an ellipse and a masked plasma window over a neon floor](docs/showcase.jpg)
+![Four example shows: effects on a triangle, pillar and ellipse; Christmas lights, snow and a greeting; Halloween with a pumpkin, a dancing skeleton and bats; a brick façade bursting open around two windows](docs/hero.jpg)
 
-> **Status:** early development (v0.3). Usable for experiments and small
-> shows, but expect rough edges. Developed on Linux Mint (Ubuntu 24.04 base).
+<sub>The example projects in `examples/` – `showcase`, `christmas`, `halloween` and `facade` – exactly as the projector shows them.</sub>
+
+> **Status:** young but complete. Used for experiments and small shows;
+> developed and tested on Linux Mint (Ubuntu 24.04 base) with one projector
+> at a time. Reports from bigger setups are very welcome.
 
 ## Features
 
-- **What you see is what the projector shows.** The editor preview and the
+**Mapping**
+- **What you see is what the projector shows** – the editor preview and the
   projector windows render the same image, live.
 - **Surfaces:** quad (perspective-correct, no diagonal seam), triangle,
-  ellipse and curved mesh (smooth spline through a grid of points).
-- **Sources:** video files, images, webcams (V4L2), network streams
-  (RTSP, SRT, UDP, HTTP, … via GStreamer), solid colours, a test pattern and
-  live patterns drawn on the GPU (gradient, stripes, plasma, tunnel, clouds,
-  rings) – no video files needed.
-  Each source is decoded once, however many surfaces show it.
-- **Crop** any part of the source onto a surface.
-- **Masks** with soft edges – hide a window or a door, or show only inside a
-  shape. Masks stay put on the wall when you adjust the surface.
-- **Blend modes:** normal, add, multiply, screen.
+  ellipse and curved mesh for pillars and arches.
+- **Masks** with soft edges – cut out a window or a door. Masks stay put on
+  the wall when you adjust the surface.
+- **Align with a webcam:** the projector shows a few dots, the camera finds
+  them, and you click the wall's corners in the camera picture.
+- **Several projectors** with keystone, **edge blending** and black-level
+  compensation where they overlap.
+
+**Content**
+- Video files, images, webcams, network streams (RTSP, SRT, UDP, HTTP),
+  solid colours and **live patterns** drawn on the GPU – no video needed.
+- **21 ready-made loops** to use freely – space, fire, aurora, Christmas,
+  Halloween, a collapsing brick façade and more (see [Examples](#examples)).
 - **Effects on any surface:** edge glow that follows the surface's shape,
-  kaleidoscope, tiles, scroll, rotate, pulse, colour cycle, strobe, blur and
-  invert – all in time with a global tempo you can tap in.
-- **Sound-reactive:** pick 🎵 Microphone or Computer audio in the toolbar and
-  effects can follow the bass; the tempo is picked up from the music.
-- **Several projectors**, each in its own window, with **edge blending** where
-  they overlap.
-- **Cues** with fades – store which surfaces are visible, how bright and with
-  which media, and step through them during a show.
-- **OSC and MIDI remote control** (TouchOSC, QLab, Ableton, USB controllers, …)
-  and **DMX lights over Art-Net** that follow the cues.
+  kaleidoscope, tiles, scroll, rotate, pulse, colour cycle, strobe, blur,
+  invert – in time with a tempo you tap in.
+- **Sound-reactive:** effects can follow the bass from a microphone or from
+  what the computer plays; the tempo is picked up from the music.
+- Crop, blend modes (normal, add, multiply, screen) and colour correction
+  per surface.
+
+**Show control**
+- **Cues** with fades: store which surfaces are visible, how bright and with
+  which media, and step through them with **Enter**.
+- **OSC** (TouchOSC, QLab, …), **MIDI** controllers with learn, and **DMX
+  lights over Art-Net** that fade with the cues – a lamp can even take its
+  colour from a video.
 - **Undo everything**, autosave every 30 s and crash recovery.
+- `--play` starts a show in fullscreen, e.g. from autostart.
 - English and Swedish user interface.
+
+![Animated preview of eight example videos](docs/demo.gif)
 
 ## Install
 
@@ -65,7 +78,8 @@ flatpak run io.github.dio99.LumaMap
 ```
 
 After changing dependencies, regenerate the offline crate list with
-`python3 packaging/flatpak/cargo-sources.py`.
+`python3 packaging/flatpak/cargo-sources.py`. Rebuild the Flatpak after code
+changes – it is built from the repository and does not update itself.
 
 ### From source
 
@@ -96,34 +110,37 @@ The binary ends up in `target/release/lumamap`.
 3. Drag the projector window onto the projector and press **F** for fullscreen.
 4. Press **▶ Show** (or **Tab**) to hide the handles.
 
-Use **⊞ Test pattern** while aligning. With a webcam you can let LumaMap do
-the aligning: select the output and click **📷 Align with camera…**. The
-projector shows nine dots that the camera finds; then click the wall's four
-corners in the camera picture and the surface lands exactly there. Save with **Ctrl+S**; projects are
-`.lmap` files with media paths relative to the project file. To move a show
-to another computer, use ☰ → **Collect project…**: it copies the project and
-every media file it uses into one folder.
+Use **⊞ Test pattern** while aligning. Save with **Ctrl+S**: projects are
+`.lmap` files with media paths relative to the project file.
 
-To start a show directly, for example from autostart:
+![The editor: media, surfaces and cues on the left, the projector preview in the middle, the selected surface's settings – shape, blending, colour, effect, mask, crop and playback – on the right](docs/screenshot.jpg)
+
+**The editor** has the media, surfaces and cues on the left, the live
+projector preview in the middle, and everything about the selected surface
+on the right: shape, blending, colour, effect, mask, the crop of the media
+and playback. With no surface selected, the right side shows the projector
+output instead: keystone, edge blending and **📷 Align with camera…**.
+
+**Aligning with a webcam:** point the camera at the wall, click **📷 Align
+with camera…** and **Start**. The projector shows nine dots one at a time
+(about ten seconds); then click the wall's four corners in the camera picture
+and the surface lands exactly there. Works best in a darkish room.
+
+**Moving a show to another computer:** ☰ → **Collect project…** copies the
+project and every media file it uses into one folder.
+
+**Starting a show automatically**, e.g. at boot in an installation:
 
 ```bash
 lumamap --play show.lmap
 ```
 
-This opens the project in Show mode with every projector in fullscreen.
-
 ## Examples
 
-Open `examples/showcase.lmap` to see every surface type at once: fire on a
-triangle, space on a curved mesh pillar, aurora in an ellipse and a plasma
-"window" with a mask and screen blending, over a neon floor. It has four cues;
-press **Enter** to step through them.
+![All 21 example videos](docs/examples.jpg)
 
-`examples/gallery.lmap` shows each example video full screen, one cue per
-video – press **Enter** to flip through them on your projector.
-
-`examples/media/` contains seamless 12-second loops (1280×720) that you are
-free to use in your own shows:
+`examples/media/` holds seamless 12-second loops (1280×720) that you are free
+to use in your own shows:
 
 | Video | |
 |---|---|
@@ -135,7 +152,7 @@ free to use in your own shows:
 | `water.mp4` | Light rippling on the bottom of a pool, with drops landing |
 | `rain.mp4` | Raindrops on a window in front of blurred city lights |
 | `matrix.mp4` | Falling green "Matrix" characters |
-| `lightgrid.mp4` | Glowing window frames with light pulses – made for building facades |
+| `lightgrid.mp4` | Glowing window frames with light pulses – made for building façades |
 | `galaxy.mp4` | A rotating spiral galaxy |
 | **Christmas** | |
 | `snow.mp4` | Snow falling in three layers |
@@ -155,24 +172,28 @@ free to use in your own shows:
 There are also greeting cards: `god-jul.jpg`, `merry-christmas.jpg`,
 `glad-halloween.jpg` and `happy-halloween.jpg`.
 
-Ready-made projects show how to combine them: `examples/christmas.lmap`,
-`examples/halloween.lmap` and `examples/facade.lmap` (step through the cues
-with **Enter**).
+**Ready-made projects** (step through the cues with **Enter**):
+
+| Project | |
+|---|---|
+| `examples/showcase.lmap` | Every surface type at once: fire on a triangle, space on a curved pillar, aurora in an ellipse, a masked plasma window, a neon floor |
+| `examples/christmas.lmap` | Snow on the façade, lights along the eaves, Santa, a "God Jul" greeting with glitter |
+| `examples/halloween.lmap` | Bats and the moon, a pumpkin on the steps, ghosts, a skeleton in the door, eyes in the bushes |
+| `examples/facade.lmap` | The brick wall illusion over the whole house, with the silhouette film in two windows |
+| `examples/gallery.lmap` | Every example video full screen, one cue each |
 
 **Tip:** videos on a black background – lights, eyes, ghosts, the skeleton,
 the pumpkin – look best with the blend mode **Add**. Black then becomes
 transparent and only the light is projected.
 
-They are generated from code, so there are no licensing questions and you
-can change them. Edit `examples/media/generate.py` and run it (needs numpy
-and ffmpeg; Pillow for Matrix, the seasonal videos and the cards):
+The videos are generated from code, so there are no licensing questions and
+you can change them. Edit `examples/media/generate.py` and run it (needs
+numpy and ffmpeg; Pillow for Matrix, the seasonal videos and the cards):
 
 ```bash
-python3 examples/media/generate.py            # all videos
+python3 examples/media/generate.py            # everything
 python3 examples/media/generate.py fire neon  # just some
 ```
-
-![The editor](docs/screenshot.jpg)
 
 ## Keyboard
 
@@ -189,6 +210,18 @@ python3 examples/media/generate.py fire neon  # just some
 | B | Black out |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S | New / open / save / save as |
+
+## Effects and music
+
+Pick an **Effect** for a surface in its settings and set **Amount** and
+**Speed**. Speed is counted in beats of the tempo shown in the toolbar
+(♩ 120) – press **Tap** in time with the music to set it.
+
+To make effects follow the music, choose 🎵 **Microphone** or **Computer
+audio** in the toolbar and tick **Follow the sound** on the effect. The bass
+then drives the effect, and the tempo is picked up from the beat (shown as
+🎵 next to the tempo). *Computer audio* listens to whatever the computer
+plays, so music from any player works without cables.
 
 ## OSC remote control
 
@@ -243,16 +276,17 @@ choice is remembered in `~/.config/lumamap/language`.
 
 ## Troubleshooting
 
-Check a camera or stream without the editor:
+Check a camera, stream, video file or sound input without the editor:
 
 ```bash
 cargo run -p lm-media --example probe -- cameras
 cargo run -p lm-media --example probe -- camera /dev/video0
 cargo run -p lm-media --example probe -- stream rtsp://camera.local/stream
+cargo run -p lm-media --example probe -- audio computer
 ```
 
-It prints when the first frame arrives and the frame rate. More detail:
-`RUST_LOG=info lumamap`.
+It prints when the first frame arrives and the frame rate (or the sound
+levels). More detail: `RUST_LOG=info lumamap`.
 
 Video is uploaded as YUV straight from the decoder and converted to RGB on
 the GPU. If colours ever look wrong with a particular video, compare with
@@ -261,23 +295,25 @@ the slower CPU conversion: `LUMAMAP_VIDEO_FORMAT=rgba lumamap`.
 ## Development
 
 ```bash
-cargo test           # model, geometry, cues, OSC and shader validation
+cargo test           # model, geometry, cues, MIDI, OSC, Art-Net, audio analysis, shaders
 cargo clippy --workspace --all-targets
+cargo run --release -p lm-render --example soak -- examples/showcase.lmap 1800
+                     # 30 minutes of playback without a window, printing memory use
 ```
 
 The code is a Cargo workspace:
 
 | Crate | Purpose |
 |---|---|
-| `lm-core` | Project model, commands, undo, cues. No GPU, no video. |
-| `lm-geom` | Homography, mesh splines, hit testing. |
-| `lm-media` | GStreamer sources (file, camera, stream), images, test pattern. |
-| `lm-render` | wgpu rendering, shaders, edge blending. |
-| `lm-control` | OSC server. |
-| `lm-app` | The application: windows, egui editor. |
+| `lm-core` | Project model, commands and undo, cues and fades, MIDI mapping, DMX values, collecting a project. No GPU, no video. |
+| `lm-geom` | Homographies, mesh splines, hit testing, camera calibration. |
+| `lm-media` | GStreamer sources (file, camera, stream), images, sound analysis. |
+| `lm-render` | wgpu rendering and shaders: surfaces, effects, patterns, YUV conversion, edge blending. |
+| `lm-control` | OSC server, raw MIDI input, Art-Net output. |
+| `lm-app` | The application: windows, egui editor, show control. |
 
 [ARCHITECTURE.md](ARCHITECTURE.md) (in Swedish) describes the design and the
-roadmap. Next up: packaging (AppImage/Flatpak), zero-copy video, MIDI.
+roadmap.
 
 ## License
 
@@ -287,8 +323,10 @@ roadmap. Next up: packaging (AppImage/Flatpak), zero-copy video, MIDI.
 
 ## På svenska
 
-LumaMap är videomappning för Linux: lägg video på väggar, pelare och andra
-ytor genom att dra hörnen tills de passar. Det klarar flera projektorer med
-kantblandning, masker, cues med övergångar och fjärrstyrning via OSC.
-Gränssnittet finns på svenska och engelska. Byt språk under ☰ → Language /
-Språk. Installation och användning beskrivs ovan.
+LumaMap är videomappning för Linux: lägg video på väggar, pelare och hela hus
+genom att dra hörnen tills de passar. Det klarar flera projektorer med
+keystone och kantblandning, masker, inriktning med webbkamera, effekter som
+följer musiken, cues med övergångar och styrning via OSC, MIDI och DMX-ljus.
+I `examples/` finns 21 fria videoloopar – bland annat jul och halloween – och
+färdiga exempelprojekt. Gränssnittet finns på svenska och engelska; byt språk
+under ☰ → Language / Språk. Installation och användning beskrivs ovan.
