@@ -11,6 +11,7 @@ mod canvas;
 mod leds;
 mod library;
 mod live;
+mod motion_ui;
 mod panels;
 mod pool;
 mod remote_ui;

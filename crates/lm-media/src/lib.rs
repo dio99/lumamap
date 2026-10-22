@@ -2,6 +2,7 @@
 //! så att fördröjningen aldrig växer om renderingen hackar till.
 
 pub mod audio;
+pub mod motion;
 mod still;
 mod video;
 

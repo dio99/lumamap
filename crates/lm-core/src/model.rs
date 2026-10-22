@@ -71,6 +71,36 @@ pub struct Settings {
     /// Visa bara under vissa tider, t.ex. en installation 16–23.
     #[serde(default)]
     pub schedule: Schedule,
+    /// Rörelse framför en kamera styr effekter och kan starta en cue.
+    #[serde(default)]
+    pub motion: MotionSettings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MotionSettings {
+    /// Kamerakällan som tittar efter rörelse.
+    pub source: Option<SourceId>,
+    /// 0..1: högre = mindre rörelse räcker.
+    pub sensitivity: f32,
+    /// Cue som startar när någon rör sig.
+    pub cue: Option<CueId>,
+    /// Minsta tid mellan två starter, sekunder.
+    pub cooldown: f32,
+}
+
+impl Default for MotionSettings {
+    fn default() -> Self {
+        MotionSettings { source: None, sensitivity: 0.5, cue: None, cooldown: 10.0 }
+    }
+}
+
+impl MotionSettings {
+    /// Rörelsenivån (andel av bilden som rört sig) omräknad till 0..1, där
+    /// 1 betyder "tydlig rörelse" för den valda känsligheten.
+    pub fn strength(&self, level: f32) -> f32 {
+        let full = 0.25 - self.sensitivity.clamp(0.0, 1.0) * 0.23;
+        (level / full).clamp(0.0, 1.0)
+    }
 }
 
 /// Tider då showen är på. Utanför dem är projektorerna svarta och videorna pausade.
@@ -220,6 +250,7 @@ impl Default for Settings {
             remote_port: default_remote_port(),
             loop_cues: false,
             schedule: Schedule::default(),
+            motion: MotionSettings::default(),
         }
     }
 }
@@ -636,6 +667,9 @@ pub struct Effect {
     /// Ljudets bas förstärker effekten.
     #[serde(default)]
     pub follow_audio: bool,
+    /// Rörelse framför kameran förstärker effekten.
+    #[serde(default)]
+    pub follow_motion: bool,
 }
 
 impl Default for Effect {
@@ -645,6 +679,7 @@ impl Default for Effect {
             amount: 0.5,
             speed: 0.25,
             follow_audio: false,
+            follow_motion: false,
         }
     }
 }

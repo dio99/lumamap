@@ -59,6 +59,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   surface's media, on the next beat if you like.
 - **Phone remote:** scan a QR code and get GO, Black, brightness and the cue
   list on your phone – no app needed.
+- **Motion:** a webcam sees people move – effects follow the motion, and a
+  cue can start when someone walks past.
 - **Schedule** for installations: on at 16:00, black at 23:00, every day.
 - **OSC** (TouchOSC, QLab, …), **MIDI** controllers with learn, and **DMX
   lights over Art-Net** that fade with the cues – a lamp can even take its
@@ -287,6 +289,19 @@ change waits for the next beat of the tempo, so it lands in time with the
 music; the clip blinks yellow while it waits. **Crossfade** sets how long the
 old clip fades into the new one (0 = hard cut). Cues crossfade too when a
 surface changes media, over the cue's fade time.
+
+## Motion
+
+Point a webcam at the audience and add it as media (**➕ Add → 📷 Camera**;
+it doesn't have to be shown on a surface). Then ☰ → **🏃 Motion…**:
+
+- **Camera:** the camera to watch. The bar shows the motion right now – set
+  **Sensitivity** so it reaches the end when someone walks past.
+- **Start cue:** the cue to start when someone moves, e.g. a scare on
+  Halloween. **Wait at least** keeps it from starting again too soon. Give
+  that cue **⏱ Next after** and the show goes back by itself.
+- Tick **🏃 Follow motion** on an effect to let the motion drive it – the
+  more people move, the stronger the effect.
 
 ## Phone remote
 

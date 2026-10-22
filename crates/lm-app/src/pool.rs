@@ -16,6 +16,8 @@ pub struct MediaPool {
     items: HashMap<SourceId, Entry>,
     /// Senaste medelfärgen per källa (för lampor som följer en källa).
     colors: HashMap<SourceId, [f32; 3]>,
+    /// Rörelse i kameror och strömmar.
+    motion: HashMap<SourceId, lm_media::motion::MotionDetector>,
 }
 
 fn open(kind: &SourceKind) -> Box<dyn MediaSource> {
@@ -89,18 +91,29 @@ impl MediaPool {
         renderer: &mut lm_render::Renderer,
         egui: &mut egui_wgpu::Renderer,
     ) {
-        let colors = &mut self.colors;
+        let (colors, motion) = (&mut self.colors, &mut self.motion);
         for (id, e) in &mut self.items {
+            let live = matches!(e.kind, SourceKind::Camera { .. } | SourceKind::Stream { .. });
             e.media.poll(&mut |frame| {
                 colors.insert(*id, frame.average_color());
+                if live {
+                    motion.entry(*id).or_default().feed(frame.luma_grid());
+                }
                 renderer.upload(device, queue, egui, *id, &frame)
             });
         }
+        let items = &self.items;
+        self.motion.retain(|id, _| items.contains_key(id));
     }
 
     /// Öppnar källan på nytt vid nästa `sync` (t.ex. efter tappad ström).
     pub fn restart(&mut self, id: SourceId) {
         self.items.remove(&id);
+    }
+
+    /// Rörelsen i en kamera eller ström (andel av bilden), om den visat bilder.
+    pub fn motion(&self, id: SourceId) -> Option<f32> {
+        self.motion.get(&id).map(|m| m.level())
     }
 
     /// Källans senaste medelfärg, om den har visat någon bild.

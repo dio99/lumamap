@@ -150,6 +150,9 @@ pub struct LumaApp {
     pub media_fades: HashMap<SurfaceId, (lm_core::SourceId, Instant, f32)>,
     /// Övertoningstid för klippbyten i Live-fönstret.
     pub live_fade: f32,
+    pub motion_window_open: bool,
+    pub motion_high: bool,
+    pub motion_fired: Option<Instant>,
 }
 
 impl LumaApp {
@@ -249,6 +252,9 @@ impl LumaApp {
             led_drag: None,
             media_fades: HashMap::new(),
             live_fade: 0.5,
+            motion_window_open: false,
+            motion_high: false,
+            motion_fired: None,
         };
 
         match startup.file {
@@ -1068,6 +1074,7 @@ impl eframe::App for LumaApp {
         self.poll_remote();
         self.tick_schedule();
         self.tick_auto_cue();
+        self.tick_motion();
         self.poll_midi();
         self.poll_audio();
         self.send_dmx();
@@ -1089,6 +1096,7 @@ impl eframe::App for LumaApp {
         self.remote_window(&ctx);
         self.schedule_window(&ctx);
         self.live_window(&ctx);
+        self.motion_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 

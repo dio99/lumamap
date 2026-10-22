@@ -192,6 +192,9 @@ impl LumaApp {
                     if ui.button(t("⏰ Schema…", "⏰ Schedule…")).clicked() {
                         self.schedule_window_open = true;
                     }
+                    if ui.button(t("🏃 Rörelse…", "🏃 Motion…")).clicked() {
+                        self.motion_window_open = true;
+                    }
                     ui.separator();
                     ui.menu_button("🌐 Language / Språk", |ui| {
                         for lang in Language::ALL {
@@ -297,6 +300,12 @@ impl LumaApp {
                     };
                     if ui.add(egui::Button::new(RichText::new("📱").color(color)).frame(false)).on_hover_text(t("Fjärrkontroll i mobilen", "Phone remote")).clicked() {
                         self.remote_window_open = true;
+                    }
+                }
+                if self.project.settings.motion.source.is_some() {
+                    let c = if self.opts.motion >= 1.0 { Color32::from_rgb(255, 120, 80) } else { Color32::from_rgb(120, 200, 120).gamma_multiply(0.5 + 0.5 * self.opts.motion) };
+                    if ui.add(egui::Button::new(RichText::new("🏃").color(c)).frame(false)).on_hover_text(t("Rörelse", "Motion")).clicked() {
+                        self.motion_window_open = true;
                     }
                 }
                 if let Some(on) = self.schedule_on {
@@ -812,6 +821,10 @@ impl LumaApp {
                 }
                 ui.end_row();
             });
+            ui.checkbox(&mut e.follow_motion, t("🏃 Följ rörelse", "🏃 Follow motion")).on_hover_text(t(
+                "Rörelse framför kameran styr styrkan. Välj kamera under ☰ → 🏃 Rörelse.",
+                "Motion in front of the camera drives the amount. Choose the camera under ☰ → 🏃 Motion.",
+            ));
             ui.checkbox(&mut e.follow_audio, t("🎵 Följ ljudet", "🎵 Follow the sound")).on_hover_text(t(
                 "Basen i musiken styr styrkan. Välj ljud med 🎵 i verktygsraden.",
                 "The bass in the music drives the amount. Choose audio with 🎵 in the toolbar.",

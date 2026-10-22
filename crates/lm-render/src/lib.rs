@@ -113,6 +113,8 @@ pub struct RenderOptions {
     pub beats: f64,
     /// Ljudets basnivå 0..1 (för effekter som följer ljudet).
     pub audio: f32,
+    /// Rörelse framför kameran 0..1 (för effekter som följer rörelse).
+    pub motion: f32,
     /// Kalibrering med kamera: utgången visas svart med (högst) en vit punkt.
     pub calibration: Option<(OutputId, Option<[f32; 2]>)>,
     /// Ytor som tonar över från ett tidigare media: (gammal källa, hur långt
@@ -129,6 +131,7 @@ impl Default for RenderOptions {
             master: 1.0,
             beats: 0.0,
             audio: 0.0,
+            motion: 0.0,
             calibration: None,
             crossfades: HashMap::new(),
         }
@@ -633,7 +636,11 @@ fn apply_effect(u: &mut SurfaceUniform, s: &Surface, opts: &RenderOptions) {
         return;
     }
     let phase = (opts.beats * e.speed as f64).rem_euclid(1.0) as f32;
-    let amount = if e.follow_audio { e.amount * opts.audio * 1.5 } else { e.amount }.clamp(0.0, 1.0);
+    let mut amount = if e.follow_audio { e.amount * opts.audio * 1.5 } else { e.amount };
+    if e.follow_motion {
+        amount *= opts.motion;
+    }
+    let amount = amount.clamp(0.0, 1.0);
     if e.kind == lm_core::EffectKind::ColorCycle {
         // Ett helt varv runt färghjulet per effektvarv.
         u.res[3] += phase * std::f32::consts::TAU;
