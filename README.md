@@ -105,21 +105,39 @@ The binary ends up in `target/release/lumamap`.
 
 ## Getting started
 
+LumaMap opens with a welcome screen: add a video, open a project, or click
+one of the examples to see how a finished show is built.
+
+![Welcome screen with the five example projects](docs/welcome.jpg)
+
 1. Drag a video or image into the window. It appears on a new surface.
 2. Drag the surface's four corners until they fit the wall.
 3. Drag the projector window onto the projector and press **F** for fullscreen.
 4. Press **▶ Show** (or **Tab**) to hide the handles.
 
 Use **⊞ Test pattern** while aligning. Save with **Ctrl+S**: projects are
-`.lmap` files with media paths relative to the project file.
+`.lmap` files with media paths relative to the project file. Recent projects
+are on the welcome screen and under ☰ → **Recent**.
 
-![The editor: media, surfaces and cues on the left, the projector preview in the middle, the selected surface's settings – shape, blending, colour, effect, mask, crop and playback – on the right](docs/screenshot.jpg)
+![The editor: media, surfaces and cues on the left, the projector preview in the middle, the selected surface's settings on the right](docs/screenshot.jpg)
 
-**The editor** has the media, surfaces and cues on the left, the live
-projector preview in the middle, and everything about the selected surface
-on the right: shape, blending, colour, effect, mask, the crop of the media
-and playback. With no surface selected, the right side shows the projector
-output instead: keystone, edge blending and **📷 Align with camera…**.
+**The editor** has three parts:
+
+- **Left – media, surfaces and cues.** Every row has a live thumbnail.
+  **➕ Add** adds a video, pattern, colour, test pattern, camera or stream.
+  Drag media onto a surface (in the list or in the preview) to show it there.
+  Drag surfaces up and down to change which one is in front; 👁 hides one.
+  Cues show their fade time, ▶ marks the running cue and › the next one.
+- **Middle – the projector preview.** Drag corners or whole surfaces.
+  **Right-click** a surface for a menu (media, shape, straighten, fill,
+  front/back, duplicate, delete). **Scroll** to zoom in on a corner, drag
+  with the **middle button** to pan, and click the 🔍 button to zoom out.
+- **Right – the selected surface**, in four tabs: **Media** (which media,
+  the crop and playback), **Surface** (shape, blending, opacity), **Effect**
+  (effect and colour) and **Mask**. A dot on a tab means something is
+  switched on there. With no surface selected, the right side shows the
+  projector output instead: keystone, edge blending and **📷 Align with
+  camera…**.
 
 **Aligning with a webcam:** point the camera at the wall, click **📷 Align
 with camera…** and **Start**. The projector shows nine dots one at a time
@@ -210,6 +228,8 @@ python3 examples/media/generate.py fire neon  # just some
 | B | Black out |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S | New / open / save / save as |
+| Scroll / middle-drag | Zoom / pan the preview |
+| Right-click | Menu for the surface under the mouse |
 
 ## Effects and music
 

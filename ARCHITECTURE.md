@@ -66,6 +66,10 @@ Principer:
 5. **Testbild** med ett klick per yta och per utgång (rutnät, färger, ID-nummer).
 6. **Tangentbordsfinjustering**: piltangent flyttar valt hörn 1 px, Shift = 10 px.
 7. **Autospara** var 30:e sekund + återställning efter krasch.
+8. **Välkomstvy** med exempelprojekt och senaste projekt när inget är öppet.
+9. **Allt går att dra**: media till ytor (i listan eller i bilden), ytor i
+   listan för lagerordning. Högerklick ger en meny för ytan, scrollhjulet
+   zoomar förhandsvisningen.
 
 ---
 
@@ -108,11 +112,11 @@ lumamap/
 │   ├── lm-media/              GStreamer-källor (fil, kamera, ström), bild, ljudanalys.
 │   ├── lm-render/             wgpu: ytor, effekter, mönster, YUV, edge blend.
 │   ├── lm-control/            OSC-server, rå MIDI, Art-Net.
-│   └── lm-app/                main(): fönster, egui-editor, showstyrning, kalibrering.
+│   └── lm-app/                main(): fönster, egui-editor (library, panels, canvas, welcome), showstyrning, kalibrering.
 ├── shaders/                   WGSL
 ├── packaging/                 .desktop, ikon, AppImage, Flatpak
 ├── docs/                      Bilder till README
-└── examples/                  Exempelprojekt (.lmap) och media/ (genererade loopar)
+└── examples/                  Exempelprojekt (.lmap), thumbs/ till välkomstvyn och media/ (genererade loopar)
 ```
 
 Beroenderiktning (inga cykler):
@@ -301,7 +305,7 @@ huvudtråden – exakt samma väg som musen.
 | **v0.3** | Edge blending, OSC, cue-lista, kamera- och strömkällor, `--play`-läge. | ✅ |
 | **v0.4** | AppImage/Flatpak, NV12-shader, zero-copy, MIDI. | ✅ utom zero-copy (se nedan) |
 | **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
-| **v1.1 – UI/UX** | En "＋ Lägg till"-meny, dra-och-släpp av filer, miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy, grupperat verktygsfält med tooltips, tydligare cue-lista. | |
+| **v1.1 – UI/UX** | En "➕ Lägg till"-meny, dra media till ytor, levande miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy med exempel och senaste projekt, tydligare cue-lista (▶ nu, › nästa). | ✅ |
 | **v1.2** | Snäpp mot andra ytors hörn och kanter, kantljus-effekter (jagande ljus, kontur, neon-ram). | |
 | **v1.3** | Fjärrkontroll i mobilen (webbsida + QR-kod), automatisk tidslinje för cues, schema (start/släck på klockslag). | |
 | **v1.4** | Klippgrid för live-byten (på nästa beat), LED-pixelmappning via Art-Net. | |

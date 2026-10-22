@@ -22,6 +22,8 @@ pub struct Startup {
 pub enum Pending {
     New,
     Open(Option<PathBuf>),
+    /// Öppna ett exempel som namnlöst projekt.
+    OpenExample(PathBuf),
     Quit,
 }
 
@@ -107,6 +109,15 @@ pub struct LumaApp {
     taps: Vec<Instant>,
     tap_gesture: Option<(u64, Instant)>,
     pub editor_canvas: Option<egui::Rect>,
+    /// Vald flik i egenskapspanelen.
+    pub prop_tab: crate::panels::PropTab,
+    /// Förhandsvisningens zoom (1 = hela bilden) och panorering i punkter.
+    pub zoom: f32,
+    pub pan: egui::Vec2,
+    /// Senast öppnade eller sparade projekt, nyast först.
+    pub recent: Vec<PathBuf>,
+    pub welcome_closed: bool,
+    pub examples: Option<Vec<crate::welcome::Example>>,
 }
 
 impl LumaApp {
@@ -177,6 +188,12 @@ impl LumaApp {
             taps: Vec::new(),
             tap_gesture: None,
             editor_canvas: None,
+            prop_tab: Default::default(),
+            zoom: 1.0,
+            pan: egui::Vec2::ZERO,
+            recent: load_recent(),
+            welcome_closed: false,
+            examples: None,
         };
 
         match startup.file {
@@ -417,6 +434,7 @@ impl LumaApp {
                     self.load(&p);
                 }
             }
+            Pending::OpenExample(path) => self.open_example(&path),
             Pending::Quit => {
                 remove_autosave();
                 self.allow_close = true;
@@ -444,6 +462,26 @@ impl LumaApp {
         self.selected_cue = None;
         self.fade = None;
         self.opts = RenderOptions::default();
+        self.zoom = 1.0;
+        self.pan = egui::Vec2::ZERO;
+    }
+
+    /// Lägger projektet först i listan över senaste projekt.
+    fn remember_recent(&mut self, path: &Path) {
+        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        // Exempel och autosparning hör inte hemma i listan.
+        if path == autosave_path() || crate::welcome::examples_dir().and_then(|d| d.canonicalize().ok()).is_some_and(|d| path.starts_with(d)) {
+            return;
+        }
+        self.recent.retain(|p| *p != path);
+        self.recent.insert(0, path);
+        self.recent.truncate(10);
+        let dir = config_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let text: String = self.recent.iter().map(|p| format!("{}\n", p.display())).collect();
+        if let Err(e) = std::fs::write(dir.join("recent"), text) {
+            log::warn!("{e}");
+        }
     }
 
     pub fn load(&mut self, path: &Path) {
@@ -463,6 +501,9 @@ impl LumaApp {
                     self.saved_revision = u64::MAX;
                 }
                 self.notify(format!("{} {}", t("Öppnade", "Opened"), path.display()));
+                if !is_autosave {
+                    self.remember_recent(path);
+                }
             }
             Err(e) => self.notify(format!("{} {}: {e}", t("Kunde inte öppna", "Could not open"), path.display())),
         }
@@ -487,6 +528,7 @@ impl LumaApp {
             Ok(()) => {
                 self.saved_revision = self.history.revision();
                 self.notify(format!("{} {}", t("Sparade", "Saved"), path.display()));
+                self.remember_recent(&path);
                 self.path = Some(path);
                 remove_autosave();
                 true
@@ -919,7 +961,7 @@ impl eframe::App for LumaApp {
 
 impl LumaApp {
     /// Ytan under en punkt i editorns förhandsvisning.
-    fn surface_at(&self, pos: Option<egui::Pos2>) -> Option<SurfaceId> {
+    pub fn surface_at(&self, pos: Option<egui::Pos2>) -> Option<SurfaceId> {
         let (pos, rect) = (pos?, self.editor_canvas?);
         if !rect.contains(pos) {
             return None;
@@ -929,7 +971,7 @@ impl LumaApp {
             .surfaces
             .iter()
             .rev()
-            .filter(|s| s.output == self.current_output)
+            .filter(|s| s.output == self.current_output && s.visible)
             .find(|s| lm_geom::point_in_polygon(p, &s.dst_pts))
             .map(|s| s.id)
     }
@@ -962,6 +1004,12 @@ pub fn set_language_saved(lang: Language) {
     if let Err(e) = std::fs::write(dir.join("language"), lang.code()) {
         log::warn!("{e}");
     }
+}
+
+fn load_recent() -> Vec<PathBuf> {
+    std::fs::read_to_string(config_dir().join("recent"))
+        .map(|s| s.lines().filter(|l| !l.trim().is_empty()).map(PathBuf::from).collect())
+        .unwrap_or_default()
 }
 
 pub fn autosave_path() -> PathBuf {

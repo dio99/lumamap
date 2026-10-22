@@ -149,7 +149,7 @@ impl LumaApp {
     }
 
     /// Ytans kontur (normaliserad). För mesh och ellips följer den kurvorna.
-    fn outline(&self, id: SurfaceId, kind: PtKind) -> Vec<Pt> {
+    pub fn outline(&self, id: SurfaceId, kind: PtKind) -> Vec<Pt> {
         let pts = self.points(id, kind).unwrap_or_default();
         if let Some((c, r)) = self.mesh_size(id, kind) {
             return lm_geom::mesh_outline(pts, c, r, CURVE_STEPS);
@@ -173,12 +173,17 @@ impl LumaApp {
                 .collect()
         };
         let p = [pos.x, pos.y];
+        // Dolda ytor går bara att ta i när de är markerade (t.ex. från listan).
+        let ids: Vec<SurfaceId> = ids
+            .into_iter()
+            .filter(|id| kind == PtKind::Src || self.selected == Some(*id) || self.project.surface(*id).is_some_and(|s| s.visible))
+            .collect();
         let order = self
             .selected
             .filter(|s| ids.contains(s))
             .into_iter()
             .chain(ids.iter().rev().copied());
-        for id in order.clone() {
+        for id in order {
             if let Some(i) = lm_geom::nearest_point(p, &screen(id), HANDLE_HIT) {
                 return Some((id, Some(i)));
             }
@@ -270,6 +275,26 @@ impl LumaApp {
                 None if matches!(kind, PtKind::Dst(_)) => self.select(None),
                 None => {}
             }
+        }
+
+        // Högerklick: meny för ytan under muspekaren, eller för att skapa en ny.
+        if matches!(kind, PtKind::Dst(_)) {
+            if resp.secondary_clicked() {
+                let hit = pointer.and_then(|p| self.hit(rect, kind, p)).map(|h| h.0);
+                self.select(hit);
+            }
+            let selected = self.selected;
+            resp.context_menu(|ui| match selected {
+                Some(id) => self.surface_menu(ui, id),
+                None => {
+                    ui.label(egui::RichText::new(t("Ny yta", "New surface")).strong());
+                    self.new_surface_buttons(ui);
+                    ui.separator();
+                    if ui.button(t("➕ Media…", "➕ Media…")).clicked() {
+                        self.pick_media_files();
+                    }
+                }
+            });
         }
 
         if let Some(pos) = resp.hover_pos() {

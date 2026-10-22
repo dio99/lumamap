@@ -8,7 +8,7 @@ use lm_core::{BlendMode, Command, Mask, BLACK_LEVEL_MAX, EDGE_BLEND_MAX, Pt, Sha
 use lm_core::i18n::{self, t, Language};
 use std::time::Duration;
 
-const FILES: &[&str] = &[
+pub(crate) const FILES: &[&str] = &[
     "mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg", "ogv", "wmv", "flv", "ts", "mts", "gif", "png", "jpg",
     "jpeg", "bmp", "webp", "tif", "tiff",
 ];
@@ -39,22 +39,9 @@ impl LumaApp {
             }
             ui.separator();
             if ui.button("➕ Media…").on_hover_text(t("Lägg till video eller bild (du kan också dra filer hit)", "Add video or image (you can also drag files here)")).clicked() {
-                if let Some(files) = rfd::FileDialog::new()
-                    .set_title(t("Lägg till media", "Add media"))
-                    .add_filter(t("Video och bild", "Video and images"), FILES)
-                    .pick_files()
-                {
-                    self.add_files(files, None);
-                }
+                self.pick_media_files();
             }
-            ui.menu_button(t("⬜ Ny yta ⏷", "⬜ New surface ⏷"), |ui| {
-                for shape in SHAPES {
-                    if ui.button(shape_label(shape)).clicked() {
-                        let src = self.selected_source;
-                        self.add_shaped(src, shape);
-                    }
-                }
-            })
+            ui.menu_button(t("⬜ Ny yta ⏷", "⬜ New surface ⏷"), |ui| self.new_surface_buttons(ui))
             .response
             .on_hover_text(t("Lägg till en yta", "Add a surface"));
             ui.separator();
@@ -147,6 +134,30 @@ impl LumaApp {
                     if ui.button(t("Öppna…   Ctrl+O", "Open…   Ctrl+O")).clicked() {
                         self.request(Pending::Open(None));
                     }
+                    let recent: Vec<std::path::PathBuf> = self.recent.iter().filter(|p| p.is_file()).take(8).cloned().collect();
+                    ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                        ui.menu_button(t("Senaste", "Recent"), |ui| {
+                            for p in recent {
+                                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                                if ui.button(name).on_hover_text(p.display().to_string()).clicked() {
+                                    self.request(Pending::Open(Some(p.clone())));
+                                }
+                            }
+                        });
+                    });
+                    if let Some(dir) = crate::welcome::examples_dir() {
+                        if ui.button(t("Exempel…", "Examples…")).on_hover_text(dir.display().to_string()).clicked() {
+                            let pick = rfd::FileDialog::new()
+                                .set_title(t("Öppna exempel", "Open example"))
+                                .set_directory(&dir)
+                                .add_filter(t("LumaMap-projekt", "LumaMap project"), &["lmap"])
+                                .pick_file();
+                            if let Some(p) = pick {
+                                self.request(Pending::OpenExample(p));
+                            }
+                        }
+                    }
+                    ui.separator();
                     if ui.button(t("Spara   Ctrl+S", "Save   Ctrl+S")).clicked() {
                         self.save(false);
                     }
@@ -246,7 +257,7 @@ impl LumaApp {
                 .map(|(m, _)| m.clone());
             let text = match msg {
                 Some(m) => RichText::new(m).color(ACCENT),
-                None => RichText::new(t("Dra hörnen med musen  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa  •  Del = ta bort", "Drag the corners with the mouse  •  Arrows nudge (Shift = 10 px)  •  C = next corner  •  Space = play/pause  •  Del = delete"))
+                None => RichText::new(t("Dra hörnen med musen  •  Högerklick = meny  •  Scrolla = zooma  •  Pilar finjusterar (Shift = 10 px)  •  C = nästa hörn  •  Mellanslag = spela/pausa", "Drag the corners with the mouse  •  Right-click = menu  •  Scroll = zoom  •  Arrows nudge (Shift = 10 px)  •  C = next corner  •  Space = play/pause"))
                     .color(Color32::from_gray(140)),
             };
             // Lämna plats åt statusen till höger; kortas av med "…" i smala fönster.
@@ -288,291 +299,6 @@ impl LumaApp {
                 }
             });
         });
-    }
-
-    fn library(&mut self, ui: &mut Ui) {
-        ui.add_space(6.0);
-        ui.heading("Media");
-        if self.project.sources.is_empty() {
-            ui.label(RichText::new(t("Dra in videor eller bilder här.", "Drag videos or images here.")).color(Color32::from_gray(140)));
-        }
-        let mut remove = None;
-        let mut assign = None;
-        for src in self.project.sources.clone() {
-            let icon = match src.kind {
-                SourceKind::Video { .. } => "🎞",
-                SourceKind::Image { .. } => "🖼",
-                SourceKind::Color { .. } => "🎨",
-                SourceKind::TestPattern => "⊞",
-                SourceKind::Camera { .. } => "📷",
-                SourceKind::Stream { .. } => "📡",
-                SourceKind::Generator { .. } => "✨",
-            };
-            let error = self.media.get(src.id).and_then(|m| m.error()).map(str::to_owned);
-            ui.horizontal(|ui| {
-                let selected = self.selected_source == Some(src.id);
-                let mut text = RichText::new(format!("{icon} {}", src.name));
-                if error.is_some() {
-                    text = text.color(Color32::from_rgb(255, 100, 100));
-                }
-                let r = ui.selectable_label(selected, text);
-                let r = match &error {
-                    Some(e) => r.on_hover_text(e),
-                    None => r.on_hover_text(t("Dubbelklicka för att visa på markerad yta", "Double-click to show on the selected surface")),
-                };
-                if r.clicked() {
-                    self.selected_source = Some(src.id);
-                }
-                if r.double_clicked() {
-                    assign = Some(src.id);
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("🗑").on_hover_text(t("Ta bort media", "Remove media")).clicked() {
-                        remove = Some(src.id);
-                    }
-                });
-            });
-        }
-        if let Some(id) = remove {
-            self.exec(Command::RemoveSource(id), None);
-        }
-        if let Some(sid) = assign {
-            match self.selected.and_then(|id| self.project.surface(id).cloned()) {
-                Some(mut s) => {
-                    s.source = Some(sid);
-                    self.exec(Command::ReplaceSurface(s), None);
-                }
-                None => {
-                    self.add_surface(Some(sid));
-                }
-            }
-        }
-        ui.horizontal(|ui| {
-            if ui.small_button(t("+ Färg", "+ Color")).clicked() {
-                let s = self.project.make_source(t("Färg", "Color"), SourceKind::Color { rgba: [1.0, 1.0, 1.0, 1.0] });
-                self.selected_source = Some(s.id);
-                let index = self.project.sources.len();
-                self.exec(Command::AddSource { source: s, index }, None);
-            }
-            if ui.small_button(t("+ Testbild", "+ Test pattern")).clicked() {
-                let s = self.project.make_source(t("Testbild", "Test pattern"), SourceKind::TestPattern);
-                self.selected_source = Some(s.id);
-                let index = self.project.sources.len();
-                self.exec(Command::AddSource { source: s, index }, None);
-            }
-        });
-        ui.menu_button(t("+ Mönster ⏷", "+ Pattern ⏷"), |ui| {
-            for pattern in lm_core::Pattern::ALL {
-                if ui.button(format!("✨ {}", pattern.label())).clicked() {
-                    let kind = SourceKind::Generator { pattern, colors: pattern.default_colors(), speed: 0.25 };
-                    self.add_source_shown(pattern.label(), kind);
-                }
-            }
-        })
-        .response
-        .on_hover_text(t("Rörligt mönster som ritas direkt – ingen videofil behövs", "Moving pattern drawn live – no video file needed"));
-        ui.horizontal(|ui| {
-            let r = ui.menu_button(t("+ Kamera ⏷", "+ Camera ⏷"), |ui| {
-                let cameras = self.cameras.get_or_insert_with(lm_media::list_cameras).clone();
-                if cameras.is_empty() {
-                    ui.label(t("Ingen kamera hittades", "No camera found"));
-                }
-                for c in &cameras {
-                    // Samma namn på flera enheter (t.ex. vanlig kamera och IR) – visa enheten också.
-                    let twin = cameras.iter().filter(|o| o.name == c.name).count() > 1;
-                    let label = if twin { format!("📷 {} – {}", c.name, c.device) } else { format!("📷 {}", c.name) };
-                    if ui.button(label).on_hover_text(&c.device).clicked() {
-                        self.add_source_shown(c.name.clone(), SourceKind::Camera { device: c.device.clone() });
-                    }
-                }
-                ui.separator();
-                if ui.button(t("⟳ Sök igen", "⟳ Search again")).clicked() {
-                    self.cameras = None;
-                }
-            });
-            r.response.on_hover_text(t("Webbkamera eller annan videoenhet", "Webcam or other video device"));
-            if ui
-                .small_button(t("+ Ström…", "+ Stream…"))
-                .on_hover_text(t("RTSP, SRT, UDP, HTTP eller NDI via GStreamer", "RTSP, SRT, UDP, HTTP or NDI via GStreamer"))
-                .clicked()
-            {
-                self.stream_input = Some(self.stream_input.take().unwrap_or_default());
-            }
-        });
-        if let Some(mut uri) = self.stream_input.take() {
-            let mut keep = true;
-            ui.horizontal(|ui| {
-                let r = ui.add(egui::TextEdit::singleline(&mut uri).hint_text(t("rtsp://kamera.local/stream", "rtsp://camera.local/stream")).desired_width(150.0));
-                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (ui.small_button(t("Lägg till", "Add")).clicked() || enter) && !uri.trim().is_empty() {
-                    let uri = uri.trim().to_string();
-                    let name = uri.split("://").nth(1).unwrap_or(&uri).split('/').next().unwrap_or(t("Ström", "Stream")).to_string();
-                    self.add_source_shown(name, SourceKind::Stream { uri, muted: false });
-                    keep = false;
-                }
-                if ui.small_button("✖").clicked() {
-                    keep = false;
-                }
-            });
-            if keep {
-                self.stream_input = Some(uri);
-            }
-        }
-
-        ui.add_space(14.0);
-        ui.heading(t("Ytor", "Surfaces"));
-        // Bara ytorna på vald utgång. `on_output` är deras index i hela listan.
-        let out = self.current_output;
-        let on_output: Vec<usize> = (0..self.project.surfaces.len()).filter(|&i| self.project.surfaces[i].output == out).collect();
-        if on_output.is_empty() {
-            ui.label(RichText::new(t("Inga ytor här än. Klicka ⬜ Ny yta.", "No surfaces here yet. Click ⬜ New surface.")).color(Color32::from_gray(140)));
-        }
-        let mut action: Option<Command> = None;
-        // Översta ytan visas först i listan.
-        for (k, &index) in on_output.iter().enumerate().rev() {
-            let s = self.project.surfaces[index].clone();
-            let (below, above) = (k.checked_sub(1).map(|j| on_output[j]), on_output.get(k + 1).copied());
-            ui.horizontal(|ui| {
-                let mut visible = s.visible;
-                if ui.checkbox(&mut visible, "").on_hover_text(t("Synlig", "Visible")).changed() {
-                    let mut ns = s.clone();
-                    ns.visible = visible;
-                    action = Some(Command::ReplaceSurface(ns));
-                }
-                let lock = if s.locked { "🔒 " } else { "" };
-                // Källan går inte att spela (fil saknas, ström tappad …): ytan är svart.
-                let broken = s.source.and_then(|id| self.media.get(id)).and_then(|m| m.error()).map(str::to_owned);
-                let mut text = RichText::new(format!("{}{lock}{}", if broken.is_some() { "⚠ " } else { "" }, s.name));
-                if broken.is_some() {
-                    text = text.color(Color32::from_rgb(255, 120, 100));
-                }
-                let r = ui.selectable_label(self.selected == Some(s.id), text);
-                let r = match &broken {
-                    Some(e) => r.on_hover_text(format!("{}: {e}", t("Media fungerar inte", "Media is not working"))),
-                    None => r,
-                };
-                if r.clicked() {
-                    self.select(Some(s.id));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(below.is_some(), egui::Button::new("⏷").small()).on_hover_text(t("Flytta bakåt", "Move back")).clicked() {
-                        action = below.map(|index| Command::MoveSurfaceTo { id: s.id, index });
-                    }
-                    if ui.add_enabled(above.is_some(), egui::Button::new("⏶").small()).on_hover_text(t("Flytta framåt", "Move forward")).clicked() {
-                        action = above.map(|index| Command::MoveSurfaceTo { id: s.id, index });
-                    }
-                });
-            });
-        }
-        if let Some(c) = action {
-            self.exec(c, None);
-        }
-
-        ui.add_space(14.0);
-        self.cue_list(ui);
-    }
-
-    fn cue_list(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.heading("Cues");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let go = egui::Button::new(RichText::new("GO ▶").strong()).fill(Color32::from_rgb(40, 110, 50));
-                if ui.add_enabled(!self.project.cues.is_empty(), go).on_hover_text(t("Nästa cue (Enter)", "Next cue (Enter)")).clicked() {
-                    self.go_next_cue(1);
-                }
-            });
-        });
-        if self.project.cues.is_empty() {
-            ui.label(RichText::new(t("Ställ in ytorna och klicka + Spara cue.", "Set up the surfaces and click + Save cue.")).color(Color32::from_gray(140)));
-        }
-        let (mut go, mut remove) = (None, None);
-        for (i, c) in self.project.cues.iter().enumerate() {
-            ui.horizontal(|ui| {
-                let current = self.current_cue == Some(c.id);
-                let mut text = RichText::new(format!("{}. {}", i + 1, c.name));
-                if current {
-                    text = text.color(Color32::from_rgb(120, 220, 120)).strong();
-                }
-                let r = ui
-                    .selectable_label(self.selected_cue == Some(c.id), text)
-                    .on_hover_text(format!("{} {:.1} s  •  {}", t("Övergång", "Fade"), c.fade, t("dubbelklicka för GO", "double-click for GO")));
-                if r.clicked() {
-                    self.selected_cue = Some(c.id);
-                }
-                if r.double_clicked() {
-                    go = Some(c.id);
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("🗑").on_hover_text(t("Ta bort cue", "Delete cue")).clicked() {
-                        remove = Some(c.id);
-                    }
-                    if ui.small_button("▶").on_hover_text(t("Gå till cuen", "Go to this cue")).clicked() {
-                        go = Some(c.id);
-                    }
-                });
-            });
-        }
-        if let Some(id) = go {
-            self.go_cue(id);
-        }
-        if let Some(id) = remove {
-            self.exec(Command::RemoveCue(id), None);
-        }
-        if ui
-            .button(t("+ Spara cue", "+ Save cue"))
-            .on_hover_text(t("Sparar vilka ytor som syns, deras opacitet och media", "Saves which surfaces are visible, their opacity and media"))
-            .clicked()
-        {
-            let cue = self.project.capture_cue(format!("Cue {}", self.project.cues.len() + 1), 1.0);
-            let id = cue.id;
-            // Efter vald cue, annars sist.
-            let index = self
-                .selected_cue
-                .and_then(|s| self.project.cues.iter().position(|c| c.id == s))
-                .map_or(self.project.cues.len(), |i| i + 1);
-            self.exec(Command::AddCue { cue, index }, None);
-            self.selected_cue = Some(id);
-            self.current_cue = Some(id);
-        }
-
-        // Vald cue
-        let Some(mut c) = self.selected_cue.and_then(|id| self.project.cue(id)).cloned() else { return };
-        let before = c.clone();
-        let mut gesture = None;
-        ui.add_space(6.0);
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            let r = ui.text_edit_singleline(&mut c.name);
-            if r.changed() || r.gained_focus() {
-                gesture = Some(self.field_gesture(&r));
-            }
-            ui.horizontal(|ui| {
-                ui.label(t("Övergång", "Fade"));
-                let r = ui.add(egui::DragValue::new(&mut c.fade).range(0.0..=60.0).speed(0.05).suffix(" s"));
-                if r.changed() {
-                    gesture = Some(self.field_gesture(&r));
-                }
-            });
-            ui.horizontal(|ui| {
-                if ui
-                    .button(t("⟳ Uppdatera", "⟳ Update"))
-                    .on_hover_text(t("Spara nuvarande läge i den här cuen", "Store the current state in this cue"))
-                    .clicked()
-                {
-                    c.surfaces = self.project.capture_cue("", 0.0).surfaces;
-                }
-                let index = self.project.cues.iter().position(|x| x.id == c.id).unwrap_or(0);
-                let n = self.project.cues.len();
-                if ui.add_enabled(index > 0, egui::Button::new("⏶").small()).on_hover_text(t("Flytta upp", "Move up")).clicked() {
-                    self.exec(Command::MoveCueTo { id: c.id, index: index - 1 }, None);
-                }
-                if ui.add_enabled(index + 1 < n, egui::Button::new("⏷").small()).on_hover_text(t("Flytta ner", "Move down")).clicked() {
-                    self.exec(Command::MoveCueTo { id: c.id, index: index + 1 }, None);
-                }
-            });
-        });
-        if c != before {
-            self.exec(Command::ReplaceCue(c), gesture);
-        }
     }
 
     pub fn osc_window(&mut self, ctx: &egui::Context) {
@@ -658,14 +384,14 @@ impl LumaApp {
                                 pick = Some(action);
                             }
                         }
-                        ui.menu_button("Cue ▸", |ui| {
+                        ui.menu_button("Cue", |ui| {
                             for c in &self.project.cues {
                                 if ui.button(format!("GO {}", c.name)).clicked() {
                                     pick = Some(lm_core::MidiAction::CueGo(c.id));
                                 }
                             }
                         });
-                        ui.menu_button(t("Yta ▸", "Surface ▸"), |ui| {
+                        ui.menu_button(t("Yta", "Surface"), |ui| {
                             for s in &self.project.surfaces {
                                 ui.menu_button(&s.name, |ui| {
                                     if ui.button(t("Opacitet (fader)", "Opacity (fader)")).clicked() {
@@ -677,7 +403,7 @@ impl LumaApp {
                                 });
                             }
                         });
-                        ui.menu_button(t("Video ▸", "Video ▸"), |ui| {
+                        ui.menu_button(t("Video", "Video"), |ui| {
                             for s in self.project.sources.iter().filter(|s| matches!(s.kind, SourceKind::Video { .. })) {
                                 ui.menu_button(&s.name, |ui| {
                                     if ui.button(t("Spela/paus (knapp)", "Play/pause (button)")).clicked() {
@@ -824,21 +550,115 @@ impl LumaApp {
         }
         ui.add_space(6.0);
 
-        egui::Grid::new("surface_props").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
+        // Flikar. En prick visar att något är påslaget i fliken.
+        let effect_on = s.effect.kind != lm_core::EffectKind::None || !s.color.is_identity();
+        let tabs = [
+            (PropTab::Media, t("🎞 Media", "🎞 Media"), false),
+            (PropTab::Surface, t("⬜ Yta", "⬜ Surface"), false),
+            (PropTab::Effect, t("✨ Effekt", "✨ Effect"), effect_on),
+            (PropTab::Mask, t("🎭 Mask", "🎭 Mask"), s.mask.is_some()),
+        ];
+        ui.horizontal(|ui| {
+            for (tab, label, on) in tabs {
+                let text = if on { RichText::new(format!("{label} •")) } else { RichText::new(label) };
+                if ui.selectable_label(self.prop_tab == tab, text).clicked() && self.prop_tab != tab {
+                    self.prop_tab = tab;
+                    // I maskfliken drar man maskens punkter direkt.
+                    self.mask_edit = tab == PropTab::Mask && s.mask.is_some();
+                    self.selected_point = None;
+                }
+            }
+        });
+        ui.separator();
+        ui.add_space(4.0);
+
+        match self.prop_tab {
+            PropTab::Media => self.media_tab(ui, &mut s),
+            PropTab::Surface => {
+                if self.surface_tab(ui, &mut s, &mut gesture) {
+                    return;
+                }
+            }
+            PropTab::Effect => self.effect_tab(ui, &mut s, &mut gesture),
+            PropTab::Mask => self.mask_tab(ui, &mut s, &mut gesture),
+        }
+
+        if self.project.surface(before.id).is_some() && s != before && self.selected == Some(before.id) {
+            self.exec(Command::ReplaceSurface(s.clone()), gesture);
+            // Ytan flyttad till en annan utgång – följ med dit.
+            self.current_output = s.output;
+        }
+        if self.selected != Some(before.id) {
+            return;
+        }
+
+        // Utsnitt ur källan + uppspelning.
+        if let (PropTab::Media, Some(sid)) = (self.prop_tab, s.source) {
+            ui.add_space(10.0);
+            ui.label(RichText::new(t("Utsnitt", "Crop")).strong());
+            ui.label(RichText::new(t("Dra hörnen för att välja vilken del som visas.", "Drag the corners to choose which part is shown.")).color(Color32::from_gray(140)));
+            let (tex, size) = self
+                .renderer
+                .source_texture(sid)
+                .map(|(t, s)| (Some(t), s))
+                .unwrap_or((None, [16, 9]));
+            let width = ui.available_width() - 16.0;
+            let aspect = size[0] as f32 / size[1].max(1) as f32;
+            let (outer, _) = ui.allocate_exact_size(egui::vec2(width + 16.0, width / aspect + 16.0), egui::Sense::hover());
+            let rect = fit(outer.shrink(8.0), aspect);
+            ui.painter().rect_filled(rect, 0.0, Color32::from_gray(30));
+            if let Some(tex) = tex {
+                ui.painter().image(
+                    tex,
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::from_gray(200),
+                );
+            }
+            self.canvas(ui, rect, PtKind::Src, "source");
+            if ui.small_button(t("⟲ Hela bilden", "⟲ Whole image")).clicked() {
+                self.set_points(s.id, PtKind::Src, UNIT_QUAD.to_vec(), None);
+            }
+            self.transport(ui, sid);
+        }
+    }
+
+    fn media_tab(&mut self, ui: &mut Ui, s: &mut Surface) {
+        ui.horizontal(|ui| {
             ui.label("Media");
             let current = s
                 .source
                 .and_then(|id| self.project.source(id))
-                .map(|src| src.name.clone())
+                .map(|src| format!("{} {}", crate::library::source_icon(&src.kind), src.name))
                 .unwrap_or_else(|| t("— ingen —", "— none —").into());
-            egui::ComboBox::from_id_salt("source_pick").selected_text(current).width(170.0).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("source_pick").selected_text(current).width(180.0).show_ui(ui, |ui| {
                 ui.selectable_value(&mut s.source, None, t("— ingen —", "— none —"));
                 for src in &self.project.sources {
-                    ui.selectable_value(&mut s.source, Some(src.id), &src.name);
+                    ui.selectable_value(&mut s.source, Some(src.id), format!("{} {}", crate::library::source_icon(&src.kind), src.name));
                 }
             });
-            ui.end_row();
+        });
+        if s.source.is_none() {
+            ui.add_space(6.0);
+            ui.label(RichText::new(t(
+                "Välj media ovan, dra en fil från listan till vänster, eller släpp en fil från filhanteraren på ytan.",
+                "Pick media above, drag one from the list on the left, or drop a file from the file manager onto the surface.",
+            )).color(Color32::from_gray(140)));
+            if ui.button(t("➕ Lägg till video eller bild…", "➕ Add video or image…")).clicked() {
+                if let Some(files) = rfd::FileDialog::new()
+                    .set_title(t("Lägg till media", "Add media"))
+                    .add_filter(t("Video och bild", "Video and images"), FILES)
+                    .pick_files()
+                {
+                    self.add_files(files, Some(s.id));
+                }
+            }
+        }
+    }
 
+    /// Returnerar true om ytan byttes ut (duplicerad/borttagen).
+    fn surface_tab(&mut self, ui: &mut Ui, s: &mut Surface, gesture: &mut Option<u64>) -> bool {
+        egui::Grid::new("surface_props").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
             if self.project.outputs.len() > 1 {
                 ui.label(t("Utgång", "Output"));
                 let current = self.project.output(s.output).map(|o| o.name.clone()).unwrap_or_default();
@@ -871,7 +691,7 @@ impl LumaApp {
                         .on_hover_text(t("Antal punkter på höjden", "Number of points down"));
                 }
                 if shape != s.shape {
-                    reshape(&mut s, shape);
+                    reshape(s, shape);
                     self.selected_point = None;
                 }
             });
@@ -888,20 +708,20 @@ impl LumaApp {
             ui.label(t("Opacitet", "Opacity"));
             let r = ui.add(egui::Slider::new(&mut s.opacity, 0.0..=1.0).show_value(true));
             if r.changed() {
-                gesture = Some(self.field_gesture(&r));
+                *gesture = Some(self.field_gesture(&r));
             }
             ui.end_row();
 
             ui.label("");
             ui.horizontal(|ui| {
                 ui.checkbox(&mut s.visible, t("Synlig", "Visible"));
-                ui.checkbox(&mut s.locked, t("Låst", "Locked"));
+                ui.checkbox(&mut s.locked, t("Låst", "Locked")).on_hover_text(t("Låsta ytor går inte att flytta av misstag", "Locked surfaces can't be moved by mistake"));
             });
             ui.end_row();
         });
 
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
             let mut test = self.opts.test_surfaces.contains(&s.id);
             if ui.toggle_value(&mut test, t("⊞ Testbild", "⊞ Test pattern")).on_hover_text(t("Visa testbild på ytan medan du riktar in den", "Show a test pattern on the surface while aligning it")).changed() {
                 if test {
@@ -911,104 +731,86 @@ impl LumaApp {
                 }
             }
             if ui.button(t("⟲ Rak", "⟲ Straighten")).on_hover_text(t("Gör ytan till en rak rektangel igen", "Make the surface a straight rectangle again")).clicked() {
-                let xs = s.dst_pts.iter().map(|p| p[0]);
-                let ys = s.dst_pts.iter().map(|p| p[1]);
-                let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
-                let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
-                s.dst_pts = shape_points(s.shape, &[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+                s.dst_pts = straightened(s);
             }
             if ui.button(t("⛶ Fyll", "⛶ Fill")).on_hover_text(t("Fyll hela projektorbilden", "Fill the whole projector image")).clicked() {
                 s.dst_pts = shape_points(s.shape, &UNIT_QUAD);
             }
         });
+        let mut replaced = false;
         ui.horizontal(|ui| {
             if ui.button(t("🗐 Duplicera", "🗐 Duplicate")).clicked() {
-                let mut copy = self.project.make_quad(s.source, s.output);
-                copy.name = format!("{} {}", s.name, t("kopia", "copy"));
-                copy.shape = s.shape;
-                copy.mask = s.mask.clone();
-                copy.blend = s.blend;
-                copy.color = s.color;
-                copy.effect = s.effect;
-                copy.src_pts = s.src_pts.clone();
-                copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
-                copy.opacity = s.opacity;
-                let index = self.project.surfaces.len();
-                let id = copy.id;
-                self.exec(Command::AddSurface { surface: copy, index }, None);
-                self.select(Some(id));
-                return;
+                self.duplicate_surface(s.id);
+                replaced = true;
             }
             if ui.button(t("🗑 Ta bort", "🗑 Delete")).clicked() {
                 self.remove_selected();
+                replaced = true;
             }
         });
-
-        // Färg
         ui.add_space(8.0);
-        egui::CollapsingHeader::new(t("🎨 Färg", "🎨 Colour"))
-            .default_open(!s.color.is_identity())
-            .show(ui, |ui| {
-                egui::Grid::new("color_adjust").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-                    let c = &mut s.color;
-                    let rows: [(&str, &mut f32, std::ops::RangeInclusive<f32>); 5] = [
-                        (t("Ljusstyrka", "Brightness"), &mut c.brightness, -1.0..=1.0),
-                        (t("Kontrast", "Contrast"), &mut c.contrast, 0.0..=2.0),
-                        (t("Gamma", "Gamma"), &mut c.gamma, 0.2..=3.0),
-                        (t("Mättnad", "Saturation"), &mut c.saturation, 0.0..=2.0),
-                        (t("Nyans", "Hue"), &mut c.hue, -180.0..=180.0),
-                    ];
-                    for (label, value, range) in rows {
-                        ui.label(label);
-                        let r = ui.add(egui::Slider::new(value, range).fixed_decimals(2));
-                        if r.changed() {
-                            gesture = Some(self.field_gesture(&r));
-                        }
-                        ui.end_row();
-                    }
-                });
-                if ui.add_enabled(!s.color.is_identity(), egui::Button::new(t("⟲ Återställ färg", "⟲ Reset colour"))).clicked() {
-                    s.color = lm_core::ColorAdjust::default();
-                }
-            });
+        ui.label(RichText::new(t("Tips: högerklicka på en yta för fler val.", "Tip: right-click a surface for more options.")).size(12.0).color(Color32::from_gray(140)));
+        replaced
+    }
 
-        // Effekt
-        egui::CollapsingHeader::new(t("✨ Effekt", "✨ Effect"))
-            .default_open(s.effect.kind != lm_core::EffectKind::None)
-            .show(ui, |ui| {
-                let e = &mut s.effect;
-                egui::ComboBox::from_id_salt("effect_pick").selected_text(e.kind.label()).width(170.0).show_ui(ui, |ui| {
-                    for kind in lm_core::EffectKind::ALL {
-                        ui.selectable_value(&mut e.kind, kind, kind.label()).on_hover_text(kind.hint());
-                    }
-                });
-                if e.kind != lm_core::EffectKind::None {
-                    egui::Grid::new("effect_params").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-                        ui.label(t("Styrka", "Amount"));
-                        let r = ui.add(egui::Slider::new(&mut e.amount, 0.0..=1.0).show_value(false));
-                        if r.changed() {
-                            gesture = Some(self.field_gesture(&r));
-                        }
-                        ui.end_row();
-                        ui.label(t("Fart", "Speed"));
-                        let r = ui
-                            .add(egui::Slider::new(&mut e.speed, 0.0..=2.0).custom_formatter(|v, _| speed_text(v)))
-                            .on_hover_text(t("I takt med tempot i verktygsraden", "In time with the tempo in the toolbar"));
-                        if r.changed() {
-                            gesture = Some(self.field_gesture(&r));
-                        }
-                        ui.end_row();
-                    });
-                    ui.checkbox(&mut e.follow_audio, t("🎵 Följ ljudet", "🎵 Follow the sound")).on_hover_text(t(
-                        "Basen i musiken styr styrkan. Välj ljud med 🎵 i verktygsraden.",
-                        "The bass in the music drives the amount. Choose audio with 🎵 in the toolbar.",
-                    ));
+    fn effect_tab(&mut self, ui: &mut Ui, s: &mut Surface, gesture: &mut Option<u64>) {
+        ui.label(RichText::new(t("Effekt", "Effect")).strong());
+        let e = &mut s.effect;
+        egui::ComboBox::from_id_salt("effect_pick").selected_text(e.kind.label()).width(180.0).show_ui(ui, |ui| {
+            for kind in lm_core::EffectKind::ALL {
+                ui.selectable_value(&mut e.kind, kind, kind.label()).on_hover_text(kind.hint());
+            }
+        });
+        if e.kind != lm_core::EffectKind::None {
+            ui.label(RichText::new(e.kind.hint()).color(Color32::from_gray(140)));
+            egui::Grid::new("effect_params").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                ui.label(t("Styrka", "Amount"));
+                let r = ui.add(egui::Slider::new(&mut e.amount, 0.0..=1.0).show_value(false));
+                if r.changed() {
+                    *gesture = Some(self.field_gesture(&r));
                 }
+                ui.end_row();
+                ui.label(t("Fart", "Speed"));
+                let r = ui
+                    .add(egui::Slider::new(&mut e.speed, 0.0..=2.0).custom_formatter(|v, _| speed_text(v)))
+                    .on_hover_text(t("I takt med tempot i verktygsraden", "In time with the tempo in the toolbar"));
+                if r.changed() {
+                    *gesture = Some(self.field_gesture(&r));
+                }
+                ui.end_row();
             });
+            ui.checkbox(&mut e.follow_audio, t("🎵 Följ ljudet", "🎵 Follow the sound")).on_hover_text(t(
+                "Basen i musiken styr styrkan. Välj ljud med 🎵 i verktygsraden.",
+                "The bass in the music drives the amount. Choose audio with 🎵 in the toolbar.",
+            ));
+        }
 
-        // Mask
         ui.add_space(14.0);
-        ui.heading("Mask");
+        ui.label(RichText::new(t("Färg", "Colour")).strong());
+        egui::Grid::new("color_adjust").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+            let c = &mut s.color;
+            let rows: [(&str, &mut f32, std::ops::RangeInclusive<f32>); 5] = [
+                (t("Ljusstyrka", "Brightness"), &mut c.brightness, -1.0..=1.0),
+                (t("Kontrast", "Contrast"), &mut c.contrast, 0.0..=2.0),
+                (t("Gamma", "Gamma"), &mut c.gamma, 0.2..=3.0),
+                (t("Mättnad", "Saturation"), &mut c.saturation, 0.0..=2.0),
+                (t("Nyans", "Hue"), &mut c.hue, -180.0..=180.0),
+            ];
+            for (label, value, range) in rows {
+                ui.label(label);
+                let r = ui.add(egui::Slider::new(value, range).fixed_decimals(2));
+                if r.changed() {
+                    *gesture = Some(self.field_gesture(&r));
+                }
+                ui.end_row();
+            }
+        });
+        if ui.add_enabled(!s.color.is_identity(), egui::Button::new(t("⟲ Återställ färg", "⟲ Reset colour"))).clicked() {
+            s.color = lm_core::ColorAdjust::default();
+        }
+    }
+
+    fn mask_tab(&mut self, ui: &mut Ui, s: &mut Surface, gesture: &mut Option<u64>) {
         match &mut s.mask {
             None => {
                 ui.label(RichText::new(t("Dölj delar av ytan, t.ex. ett fönster eller en dörr.", "Hide parts of the surface, e.g. a window or a door.")).color(Color32::from_gray(140)));
@@ -1038,6 +840,8 @@ impl LumaApp {
                     {
                         self.selected_point = None;
                     }
+                });
+                ui.horizontal(|ui| {
                     ui.radio_value(&mut m.invert, true, t("Dölj inuti", "Hide inside"));
                     ui.radio_value(&mut m.invert, false, t("Visa inuti", "Show inside"));
                 });
@@ -1045,7 +849,7 @@ impl LumaApp {
                     ui.label(t("Mjuk kant", "Feather"));
                     let r = ui.add(egui::Slider::new(&mut m.feather, 0.0..=200.0).suffix(" px"));
                     if r.changed() {
-                        gesture = Some(self.field_gesture(&r));
+                        *gesture = Some(self.field_gesture(&r));
                     }
                 });
                 if self.mask_edit {
@@ -1060,45 +864,25 @@ impl LumaApp {
                 }
             }
         }
+    }
 
-        if self.project.surface(before.id).is_some() && s != before && self.selected == Some(before.id) {
-            self.exec(Command::ReplaceSurface(s.clone()), gesture);
-            // Ytan flyttad till en annan utgång – följ med dit.
-            self.current_output = s.output;
-        }
-        if self.selected != Some(before.id) {
-            return;
-        }
-
-        // Utsnitt ur källan + uppspelning.
-        if let Some(sid) = s.source {
-            ui.add_space(14.0);
-            ui.heading(t("Utsnitt ur media", "Media crop"));
-            ui.label(RichText::new(t("Dra hörnen för att välja vilken del som visas.", "Drag the corners to choose which part is shown.")).color(Color32::from_gray(140)));
-            let (tex, size) = self
-                .renderer
-                .source_texture(sid)
-                .map(|(t, s)| (Some(t), s))
-                .unwrap_or((None, [16, 9]));
-            let width = ui.available_width() - 16.0;
-            let aspect = size[0] as f32 / size[1].max(1) as f32;
-            let (outer, _) = ui.allocate_exact_size(egui::vec2(width + 16.0, width / aspect + 16.0), egui::Sense::hover());
-            let rect = fit(outer.shrink(8.0), aspect);
-            ui.painter().rect_filled(rect, 0.0, Color32::from_gray(30));
-            if let Some(tex) = tex {
-                ui.painter().image(
-                    tex,
-                    rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::from_gray(200),
-                );
-            }
-            self.canvas(ui, rect, PtKind::Src, "source");
-            if ui.small_button(t("⟲ Hela bilden", "⟲ Whole image")).clicked() {
-                self.set_points(s.id, PtKind::Src, UNIT_QUAD.to_vec(), None);
-            }
-            self.transport(ui, sid);
-        }
+    /// Lägger en kopia av ytan lite förskjuten och markerar den.
+    pub fn duplicate_surface(&mut self, id: lm_core::SurfaceId) {
+        let Some(s) = self.project.surface(id).cloned() else { return };
+        let mut copy = self.project.make_quad(s.source, s.output);
+        copy.name = format!("{} {}", s.name, t("kopia", "copy"));
+        copy.shape = s.shape;
+        copy.mask = s.mask.clone();
+        copy.blend = s.blend;
+        copy.color = s.color;
+        copy.effect = s.effect;
+        copy.src_pts = s.src_pts.clone();
+        copy.dst_pts = s.dst_pts.iter().map(|p| [p[0] + 0.03, p[1] + 0.03]).collect();
+        copy.opacity = s.opacity;
+        let index = self.project.surface_index(id).map_or(self.project.surfaces.len(), |i| i + 1);
+        let id = copy.id;
+        self.exec(Command::AddSurface { surface: copy, index }, None);
+        self.select(Some(id));
     }
 
     /// Kamera och ström: status, paus, försök igen, ljud.
@@ -1398,12 +1182,40 @@ impl LumaApp {
     }
 
     fn preview(&mut self, ui: &mut Ui) {
+        if self.show_welcome() {
+            self.welcome(ui);
+            return;
+        }
         let Some(out) = self.project.output(self.current_output).cloned() else { return };
-        let avail = ui.max_rect().shrink(16.0);
+        let panel = ui.max_rect();
         let aspect = out.resolution[0] as f32 / out.resolution[1].max(1) as f32;
-        let rect = fit(avail, aspect);
+        let base = fit(panel.shrink(16.0), aspect);
+
+        // Zoom med scrollhjulet (mot muspekaren), panorera med mittenknappen.
+        if ui.rect_contains_pointer(panel) {
+            let (scroll, pinch, pointer, middle, delta) =
+                ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta(), i.pointer.hover_pos(), i.pointer.middle_down(), i.pointer.delta()));
+            let factor = pinch * (scroll / 500.0).exp();
+            if (factor - 1.0).abs() > 1e-4 {
+                let zoom = (self.zoom * factor).clamp(1.0, 8.0);
+                if let Some(p) = pointer {
+                    let off = p - (base.center() + self.pan);
+                    self.pan += off - off * (zoom / self.zoom);
+                }
+                self.zoom = zoom;
+            }
+            if middle {
+                self.pan += delta;
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            }
+        }
+        // Bilden täcker alltid hela vyn när den är inzoomad.
+        let slack = base.size() * (self.zoom - 1.0) / 2.0;
+        self.pan = self.pan.clamp(-slack, slack);
+        let rect = egui::Rect::from_center_size(base.center() + self.pan, base.size() * self.zoom);
+
         self.editor_canvas = Some(rect);
-        let painter = ui.painter();
+        let painter = ui.painter_at(panel);
         painter.rect_filled(rect, 0.0, Color32::BLACK);
         if let Some(tex) = self.renderer.output_texture(out.id) {
             painter.image(
@@ -1414,7 +1226,7 @@ impl LumaApp {
             );
         }
         painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, Color32::from_gray(70)), egui::StrokeKind::Outside);
-        ui.painter().text(
+        painter.text(
             rect.left_top() - egui::vec2(0.0, 4.0),
             egui::Align2::LEFT_BOTTOM,
             &out.name,
@@ -1424,7 +1236,7 @@ impl LumaApp {
 
         let dragging_file = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
         if self.project.surfaces.is_empty() || dragging_file {
-            ui.painter().text(
+            painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 if dragging_file { t("Släpp här", "Drop here") } else { t("Dra in en video eller bild hit", "Drag a video or image here") },
@@ -1434,12 +1246,50 @@ impl LumaApp {
         }
         let kind = self.edit_kind(out.id);
         self.canvas(ui, rect, kind, "editor");
+        self.media_drop(ui, panel, rect);
+
+        if self.zoom > 1.0 {
+            let r = egui::Rect::from_min_size(panel.right_top() + egui::vec2(-104.0, 8.0), egui::vec2(96.0, 24.0));
+            if ui
+                .put(r, egui::Button::new(format!("🔍 {:.0} %  ⟲", self.zoom * 100.0)))
+                .on_hover_text(t("Tillbaka till hela bilden", "Back to the whole picture"))
+                .clicked()
+            {
+                self.zoom = 1.0;
+                self.pan = egui::Vec2::ZERO;
+            }
+        }
+    }
+
+    /// Media som dras från listan och släpps i bilden: på ytan under
+    /// muspekaren, eller som en ny yta.
+    fn media_drop(&mut self, ui: &mut Ui, panel: egui::Rect, rect: egui::Rect) {
+        let ctx = ui.ctx().clone();
+        let Some(m) = egui::DragAndDrop::payload::<crate::library::DragMedia>(&ctx) else { return };
+        let Some(pos) = ctx.pointer_interact_pos().filter(|p| panel.contains(*p)) else { return };
+        let target = self.surface_at(Some(pos));
+        let painter = ui.painter_at(panel);
+        let name = self.project.source(m.0).map(|s| s.name.clone()).unwrap_or_default();
+        let text = match target.and_then(|id| self.project.surface(id)) {
+            Some(s) => {
+                let v = self.view(rect, PtKind::Dst(s.output));
+                let outline = self.outline(s.id, PtKind::Dst(s.output)).iter().map(|p| v.pt(*p)).collect();
+                painter.add(egui::Shape::closed_line(outline, egui::Stroke::new(3.0, ACCENT)));
+                format!("{} {name} {} {}", t("Visa", "Show"), t("på", "on"), s.name)
+            }
+            None => format!("{name} {}", t("på en ny yta", "on a new surface")),
+        };
+        painter.text(pos + egui::vec2(16.0, 40.0), egui::Align2::LEFT_TOP, text, egui::FontId::proportional(15.0), ACCENT);
+        if ctx.input(|i| i.pointer.any_released()) {
+            egui::DragAndDrop::clear_payload(&ctx);
+            self.show_source_on(m.0, target);
+        }
     }
 }
 
-const SHAPES: [Shape; 4] = [Shape::Quad, Shape::Triangle, Shape::Ellipse, Shape::Mesh { cols: 4, rows: 4 }];
+pub(crate) const SHAPES: [Shape; 4] = [Shape::Quad, Shape::Triangle, Shape::Ellipse, Shape::Mesh { cols: 4, rows: 4 }];
 
-fn shape_label(shape: Shape) -> &'static str {
+pub(crate) fn shape_label(shape: Shape) -> &'static str {
     match shape {
         Shape::Quad => t("Fyrhörn", "Quad"),
         Shape::Triangle => t("Triangel", "Triangle"),
@@ -1459,7 +1309,7 @@ fn speed_text(v: f64) -> String {
     }
 }
 
-fn shape_hint(shape: Shape) -> &'static str {
+pub(crate) fn shape_hint(shape: Shape) -> &'static str {
     match shape {
         Shape::Quad => t("Fyra hörn, perspektivriktig", "Four corners, perspective-correct"),
         Shape::Triangle => t("Tre hörn, t.ex. en gavel", "Three corners, e.g. a gable"),
@@ -1475,6 +1325,25 @@ fn blend_hint(mode: BlendMode) -> &'static str {
         BlendMode::Multiply => t("Mörkar ner det som ligger under – vitt blir genomskinligt", "Darkens what is underneath – white becomes transparent"),
         BlendMode::Screen => t("Ljusar upp mjukt – svart blir genomskinligt", "Brightens softly – black becomes transparent"),
     }
+}
+
+/// Ytan som en rak rektangel runt dess nuvarande hörn.
+pub(crate) fn straightened(s: &Surface) -> Vec<Pt> {
+    let xs = s.dst_pts.iter().map(|p| p[0]);
+    let ys = s.dst_pts.iter().map(|p| p[1]);
+    let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+    let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+    shape_points(s.shape, &[[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+}
+
+/// Vilken flik egenskapspanelen visar.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum PropTab {
+    #[default]
+    Media,
+    Surface,
+    Effect,
+    Mask,
 }
 
 /// Punkter för `shape` som täcker fyrhörningen `quad`.
