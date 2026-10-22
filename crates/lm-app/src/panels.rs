@@ -37,6 +37,8 @@ impl LumaApp {
             if ui.add(mode_btn).on_hover_text(t("Växla mellan Redigera och Visa (Tab)", "Switch between Edit and Show (Tab)")).clicked() {
                 self.show_mode = !self.show_mode;
             }
+            ui.toggle_value(&mut self.live_window_open, t("⚡ Live", "⚡ Live"))
+                .on_hover_text(t("Byt klipp live med ett klick, i takt med musiken", "Switch clips live with one click, in time with the music"));
             ui.separator();
             if ui.button("➕ Media…").on_hover_text(t("Lägg till video eller bild (du kan också dra filer hit)", "Add video or image (you can also drag files here)")).clicked() {
                 self.pick_media_files();
@@ -547,6 +549,8 @@ impl LumaApp {
                 "Cues sparar lampornas läge och tonar dem. Master och Svart gäller även lamporna.",
                 "Cues store the lamps and fade them. Master and Black apply to the lamps too.",
             )).color(Color32::from_gray(150)));
+            let mut led_gesture = None;
+            self.led_section(ui, &mut led_gesture);
         });
         self.dmx_window_open = open;
         if settings != self.project.settings {

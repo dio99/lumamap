@@ -33,6 +33,9 @@ pub struct Project {
     /// Ljus som styrs med DMX (Art-Net).
     #[serde(default)]
     pub lamps: Vec<Lamp>,
+    /// LED-slingor som tar sina färger från projektorbilden.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub led_strips: Vec<LedStrip>,
     #[serde(default)]
     pub settings: Settings,
     next_id: u32,
@@ -336,6 +339,108 @@ pub fn dmx_universe(lamps: &[Lamp], master: f32, color_of: impl Fn(&Lamp) -> [f3
         }
     }
     out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LedId(pub u32);
+
+/// I vilken ordning slingans lysdioder vill ha färgerna.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ColorOrder {
+    #[default]
+    Rgb,
+    Grb,
+    Brg,
+}
+
+impl ColorOrder {
+    pub const ALL: [ColorOrder; 3] = [ColorOrder::Rgb, ColorOrder::Grb, ColorOrder::Brg];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ColorOrder::Rgb => "RGB",
+            ColorOrder::Grb => "GRB",
+            ColorOrder::Brg => "BRG",
+        }
+    }
+
+    fn arrange(self, [r, g, b]: [u8; 3]) -> [u8; 3] {
+        match self {
+            ColorOrder::Rgb => [r, g, b],
+            ColorOrder::Grb => [g, r, b],
+            ColorOrder::Brg => [b, r, g],
+        }
+    }
+}
+
+/// En LED-slinga (pixlar som styrs via Art-Net), utlagd som en linje över
+/// projektorbilden. Varje lysdiod får färgen i bilden där den ligger, så
+/// slingan förlänger projektionen ut i rummet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LedStrip {
+    pub id: LedId,
+    pub name: String,
+    pub output: OutputId,
+    /// Slingans ändar i utgångens koordinater (0..1).
+    pub start: Pt,
+    pub end: Pt,
+    pub pixels: u16,
+    /// Art-Net-universum och första kanal (1..512). Pixlar som inte ryms
+    /// fortsätter i nästa universum (170 pixlar per universum).
+    pub universe: u16,
+    pub address: u16,
+    #[serde(default)]
+    pub order: ColorOrder,
+    #[serde(default = "one")]
+    pub level: f32,
+}
+
+pub const LED_PIXELS_MAX: u16 = 2048;
+
+impl LedStrip {
+    /// Var varje lysdiod ligger, jämnt fördelade från början till slut.
+    pub fn positions(&self) -> Vec<Pt> {
+        let n = self.pixels.clamp(1, LED_PIXELS_MAX) as usize;
+        (0..n)
+            .map(|i| {
+                let f = if n == 1 { 0.5 } else { i as f32 / (n - 1) as f32 };
+                [self.start[0] + (self.end[0] - self.start[0]) * f, self.start[1] + (self.end[1] - self.start[1]) * f]
+            })
+            .collect()
+    }
+
+    /// Universum och kanaler (universum, första kanal 0-baserad) för varje pixel.
+    fn slots(&self) -> impl Iterator<Item = (u16, usize)> + '_ {
+        let mut universe = self.universe;
+        let mut ch = (self.address.clamp(1, 512) - 1) as usize;
+        (0..self.pixels.clamp(1, LED_PIXELS_MAX)).map(move |_| {
+            if ch + 3 > 512 {
+                universe = universe.saturating_add(1);
+                ch = 0;
+            }
+            let slot = (universe, ch);
+            ch += 3;
+            slot
+        })
+    }
+
+    /// Sista universumet slingan använder.
+    pub fn last_universe(&self) -> u16 {
+        self.slots().last().map_or(self.universe, |s| s.0)
+    }
+}
+
+/// Lägger LED-slingornas färger (0..1, en per pixel) i DMX-universum.
+/// `base` innehåller redan lamporna; slingorna skriver över där de ligger.
+pub fn led_universes(strips: &[LedStrip], colors: &[Vec<[f32; 3]>], master: f32, base: &mut std::collections::BTreeMap<u16, [u8; 512]>) {
+    for (strip, cols) in strips.iter().zip(colors) {
+        let k = strip.level.clamp(0.0, 1.0) * master.clamp(0.0, 1.0);
+        for ((universe, ch), c) in strip.slots().zip(cols) {
+            let rgb = c.map(|v| (v.clamp(0.0, 1.0) * k * 255.0).round() as u8);
+            let out = base.entry(universe).or_insert([0u8; 512]);
+            out[ch..ch + 3].copy_from_slice(&strip.order.arrange(rgb));
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -800,6 +905,7 @@ impl Project {
             outputs: Vec::new(),
             cues: Vec::new(),
             lamps: Vec::new(),
+            led_strips: Vec::new(),
             settings: Settings::default(),
             next_id: 1,
         };
@@ -848,6 +954,24 @@ impl Project {
             Some(i) if i + 1 < n => Some(i + 1),
             Some(_) if self.settings.loop_cues => Some(0),
             Some(_) => None,
+        }
+    }
+
+    /// En ny LED-slinga längs bildens nederkant (läggs inte till – använd `Command::SetLedStrips`).
+    pub fn make_led_strip(&mut self, output: OutputId) -> LedStrip {
+        // Efter de andra slingorna, i ett eget universum.
+        let universe = self.led_strips.iter().map(|l| l.last_universe() + 1).max().unwrap_or(1);
+        LedStrip {
+            id: LedId(self.alloc_id()),
+            name: format!("{} {}", crate::i18n::t("LED-slinga", "LED strip"), self.led_strips.len() + 1),
+            output,
+            start: [0.05, 0.95],
+            end: [0.95, 0.95],
+            pixels: 60,
+            universe,
+            address: 1,
+            order: ColorOrder::Rgb,
+            level: 1.0,
         }
     }
 
@@ -1087,6 +1211,29 @@ mod tests {
                 assert!(dir.join(s.kind.path().unwrap()).exists(), "{name}: {}", s.name);
             }
         }
+    }
+
+    #[test]
+    fn led_strip_spills_into_next_universe() {
+        let mut p = Project::new();
+        let mut strip = p.make_led_strip(p.outputs[0].id);
+        strip.pixels = 172;
+        strip.universe = 3;
+        strip.order = ColorOrder::Grb;
+        assert_eq!(strip.positions().len(), 172);
+        assert_eq!(strip.positions()[0], [0.05, 0.95]);
+        assert_eq!(strip.positions()[171], [0.95, 0.95]);
+        assert_eq!(strip.last_universe(), 4);
+        let colors = vec![vec![[1.0, 0.5, 0.0]; 172]];
+        let mut out = std::collections::BTreeMap::new();
+        out.insert(3, [7u8; 512]);
+        led_universes(&[strip], &colors, 1.0, &mut out);
+        // GRB: grönt först. 170 pixlar i universum 3, resten i 4.
+        assert_eq!(&out[&3][..3], &[128, 255, 0]);
+        assert_eq!(&out[&3][507..510], &[128, 255, 0]);
+        assert_eq!(&out[&3][510..], &[7, 7]);
+        assert_eq!(&out[&4][..6], &[128, 255, 0, 128, 255, 0]);
+        assert_eq!(out[&4][6], 0);
     }
 
     #[test]

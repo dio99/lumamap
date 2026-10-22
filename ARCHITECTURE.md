@@ -308,7 +308,7 @@ huvudtråden – exakt samma väg som musen.
 | **v1.1 – UI/UX** | En "➕ Lägg till"-meny, dra media till ytor, levande miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy med exempel och senaste projekt, tydligare cue-lista (▶ nu, › nästa). | ✅ |
 | **v1.2** | Snäpp mot andra ytors hörn och kanter och bildens kant (Ctrl = fritt), kantljus-effekter (jagande ljus, neonram, ljussvep) och exemplet `geometry.lmap`. | ✅ |
 | **v1.3** | Fjärrkontroll i mobilen (webbsida i `lm-control::remote` med hemlig nyckel + QR-kod), cues som går vidare automatiskt och loopar, schema (start/släck på klockslag, lokal tid via jiff). | ✅ |
-| **v1.4** | Klippgrid för live-byten (på nästa beat), LED-pixelmappning via Art-Net. | |
+| **v1.4** | Live-fönster med klippgrid (klick eller 1–9, på nästa slag), LED-slingor som läser projektorbilden via en compute-pass (`shaders/led.wgsl`) och skickas som Art-Net över flera universum. | ✅ |
 | Senare | Rörelseinteraktivitet via webbkamera, ritläge för ljus, NDI-källor, kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
 
 Utöver planen har också tillkommit: färgjustering per yta, keystone per

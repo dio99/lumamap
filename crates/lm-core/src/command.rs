@@ -24,6 +24,8 @@ pub enum Command {
     ReplaceSettings(Settings),
     /// Ersätter alla lampor (lägga till, ta bort, ändra).
     SetLamps(Vec<Lamp>),
+    /// Ersätter alla LED-slingor.
+    SetLedStrips(Vec<LedStrip>),
     /// Flera kommandon som ett ångra-steg.
     Batch(Vec<Command>),
 }
@@ -130,6 +132,10 @@ impl Command {
             Command::SetLamps(new) => {
                 let old = std::mem::replace(&mut p.lamps, new);
                 Some(Command::SetLamps(old))
+            }
+            Command::SetLedStrips(new) => {
+                let old = std::mem::replace(&mut p.led_strips, new);
+                Some(Command::SetLedStrips(old))
             }
             Command::ReplaceSettings(new) => {
                 let old = std::mem::replace(&mut p.settings, new);

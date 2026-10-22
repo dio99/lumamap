@@ -335,6 +335,11 @@ impl LumaApp {
         let universe = lm_core::dmx_universe(&self.project.lamps, master, |l| {
             l.follow.and_then(|id| media.average_color(id)).unwrap_or(l.color)
         });
+        let mut universes = std::collections::BTreeMap::new();
+        universes.insert(settings.universe, universe);
+        // LED-slingorna: bilden innehåller redan master och Svart.
+        let colors: Vec<Vec<[f32; 3]>> = self.project.led_strips.iter().map(|s| self.led_colors.get(&s.id).cloned().unwrap_or_default()).collect();
+        lm_core::led_universes(&self.project.led_strips, &colors, 1.0, &mut universes);
         if self.artnet.is_none() {
             match lm_control::artnet::ArtNetSender::new() {
                 Ok(s) => self.artnet = Some(s),
@@ -345,7 +350,12 @@ impl LumaApp {
             }
         }
         if let Some(sender) = &mut self.artnet {
-            self.dmx_error = sender.send(&settings.target, settings.universe, &universe).err().map(|e| e.to_string());
+            self.dmx_error = None;
+            for (u, data) in &universes {
+                if let Err(e) = sender.send(&settings.target, *u, data) {
+                    self.dmx_error = Some(e.to_string());
+                }
+            }
         }
     }
 

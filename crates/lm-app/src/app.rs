@@ -134,6 +134,15 @@ pub struct LumaApp {
     pub schedule_on: Option<bool>,
     pub schedule_checked: Instant,
     pub schedule_window_open: bool,
+    /// Live-fönstret med klipp.
+    pub live_window_open: bool,
+    pub live_target: Option<SurfaceId>,
+    pub live_quantize: bool,
+    pub clip_pending: Option<crate::live::PendingClip>,
+    /// LED-slingornas senast lästa färger.
+    pub led_colors: HashMap<lm_core::LedId, Vec<[f32; 3]>>,
+    pub led_sampled: Instant,
+    pub led_drag: Option<crate::leds::LedDrag>,
 }
 
 impl LumaApp {
@@ -222,6 +231,13 @@ impl LumaApp {
             schedule_on: None,
             schedule_checked: Instant::now() - Duration::from_secs(10),
             schedule_window_open: false,
+            live_window_open: false,
+            live_target: None,
+            live_quantize: true,
+            clip_pending: None,
+            led_colors: HashMap::new(),
+            led_sampled: Instant::now(),
+            led_drag: None,
         };
 
         match startup.file {
@@ -490,6 +506,8 @@ impl LumaApp {
         self.selected_cue = None;
         self.fade = None;
         self.cue_started = None;
+        self.clip_pending = None;
+        self.live_target = None;
         self.schedule_on = None;
         self.schedule_checked = Instant::now() - Duration::from_secs(10);
         self.opts = RenderOptions::default();
@@ -945,6 +963,8 @@ impl eframe::App for LumaApp {
             self.media.sync(&self.project, &mut self.renderer, &mut egui_renderer);
             self.media.poll(&rs.device, &rs.queue, &mut self.renderer, &mut egui_renderer);
             self.renderer.render(&rs.device, &rs.queue, &mut egui_renderer, &self.project, &self.opts);
+            drop(egui_renderer);
+            self.tick_leds(&rs.device, &rs.queue);
         }
 
         // 2. Stäng programmet – fråga först om något är osparat.
@@ -979,6 +999,7 @@ impl eframe::App for LumaApp {
         let bpm = self.audio_bpm.unwrap_or(self.project.settings.bpm);
         self.opts.beats += dt * bpm as f64 / 60.0;
         self.tick_fade();
+        self.tick_clips();
         self.shortcuts(ui);
         self.editor_ui(ui);
         self.output_windows(&ctx);
@@ -988,6 +1009,7 @@ impl eframe::App for LumaApp {
         self.midi_window(&ctx);
         self.remote_window(&ctx);
         self.schedule_window(&ctx);
+        self.live_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 

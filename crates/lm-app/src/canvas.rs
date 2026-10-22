@@ -211,6 +211,15 @@ impl LumaApp {
         let resp = ui.interact(rect, ui.id().with(("canvas", salt)), Sense::click_and_drag());
         let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
 
+        // LED-slingornas ändar går före ytorna när ljusfönstret är öppet.
+        if let PtKind::Dst(out) = kind {
+            let origin = ui.input(|i| i.pointer.press_origin()).or(pointer);
+            if self.led_drag(&resp, &v, out, origin, pointer) {
+                self.paint_overlay(ui, rect, kind);
+                return;
+            }
+        }
+
         if resp.drag_started() {
             let origin = ui.input(|i| i.pointer.press_origin()).or(pointer);
             if let Some(origin) = origin {
@@ -429,6 +438,9 @@ impl LumaApp {
                     painter.circle_filled(*p, 3.5, color);
                 }
             }
+        }
+        if let PtKind::Dst(out) = kind {
+            self.paint_leds(&painter, &v, out);
         }
     }
 

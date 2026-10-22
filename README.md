@@ -51,12 +51,15 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **Cues** with fades: store which surfaces are visible, how bright and with
   which media, and step through them with **Enter** – or let them run by
   themselves after a set time, in a loop.
+- **Live clips:** a grid of every clip – click or press 1–9 to switch a
+  surface's media, on the next beat if you like.
 - **Phone remote:** scan a QR code and get GO, Black, brightness and the cue
   list on your phone – no app needed.
 - **Schedule** for installations: on at 16:00, black at 23:00, every day.
 - **OSC** (TouchOSC, QLab, …), **MIDI** controllers with learn, and **DMX
   lights over Art-Net** that fade with the cues – a lamp can even take its
-  colour from a video.
+  colour from a video, and **LED pixel strips** take their colours from the
+  projector image where they lie.
 - **Undo everything**, autosave every 30 s and crash recovery.
 - `--play` starts a show in fullscreen, e.g. from autostart.
 - English and Swedish user interface.
@@ -242,6 +245,7 @@ python3 examples/media/generate.py fire neon  # just some
 | Scroll / middle-drag | Zoom / pan the preview |
 | Right-click | Menu for the surface under the mouse |
 | Ctrl while dragging | Don't snap to other surfaces |
+| 1–9 | Switch to clip 1–9 (when ⚡ Live is open) |
 
 ## Effects and music
 
@@ -256,6 +260,14 @@ audio** in the toolbar and tick **Follow the sound** on the effect. The bass
 then drives the effect, and the tempo is picked up from the beat (shown as
 🎵 next to the tempo). *Computer audio* listens to whatever the computer
 plays, so music from any player works without cables.
+
+## Live clips
+
+**⚡ Live** in the toolbar opens every clip as a grid of thumbnails. Pick a
+surface (or use the selected one) and click a clip – or press **1–9** – to
+show it there, starting from the beginning. With **On the next beat** the
+change waits for the next beat of the tempo, so it lands in time with the
+music; the clip blinks yellow while it waits.
 
 ## Phone remote
 
@@ -326,6 +338,16 @@ the DMX channel each one starts at. Every cue stores the lamps' level and
 colour and fades them with the projection; master and black-out apply too.
 Set a lamp's **Colour from** to a video and it follows the video's average
 colour, so the room light matches the projection.
+
+**LED strips** (pixel strips such as WS2812 behind an Art-Net node) continue
+the projection out into the room. Click **➕ LED strip**, set the number of
+pixels, the universe and the first channel, then drag the strip's two ends
+in the preview to where the strip should take its colours – along the eaves,
+around a window, under a stage. Each LED gets the colour of the projector
+image where it lies. A strip uses 3 channels per pixel and continues in the
+next universe after 170 pixels; pick **GRB** if red and green are swapped.
+The strip and its colours are drawn in the preview while the Lights window is
+open.
 
 ## Language
 

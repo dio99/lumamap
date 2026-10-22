@@ -8,7 +8,9 @@
 mod app;
 mod calib;
 mod canvas;
+mod leds;
 mod library;
+mod live;
 mod panels;
 mod pool;
 mod remote_ui;

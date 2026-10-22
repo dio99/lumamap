@@ -14,6 +14,7 @@ pub use egui_wgpu;
 
 mod edge;
 mod generator;
+mod led;
 mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -146,6 +147,8 @@ pub struct Renderer {
     yuv: yuv::YuvConverter,
     generator: generator::GeneratorPass,
     generators: HashMap<SourceId, generator::GeneratorState>,
+    led: led::LedPass,
+    leds: HashMap<OutputId, led::LedState>,
 }
 
 impl Renderer {
@@ -286,7 +289,35 @@ impl Renderer {
             yuv: yuv::YuvConverter::new(device, FORMAT),
             generator: generator::GeneratorPass::new(device, FORMAT),
             generators: HashMap::new(),
+            led: led::LedPass::new(device),
+            leds: HashMap::new(),
         }
+    }
+
+    /// Startar en läsning av utgångens färger i `points` (0..1) för LED-slingor.
+    /// Resultatet kommer några bildrutor senare via `led_colors`. Tom lista
+    /// släpper resurserna.
+    pub fn sample_leds(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, output: OutputId, points: &[[f32; 2]]) {
+        if points.is_empty() {
+            self.leds.remove(&output);
+            return;
+        }
+        let Some(out) = self.outputs.get(&output) else { return };
+        let fits = self.leds.get(&output).is_some_and(|s| s.cap() >= points.len());
+        if !fits {
+            let cap = points.len().next_power_of_two().max(64);
+            self.leds.insert(output, self.led.make_state(device, cap));
+        }
+        let state = self.leds.get_mut(&output).expect("skapad ovan");
+        self.led.sample(device, queue, state, &out.resolve_view, points);
+    }
+
+    /// Senast lästa LED-färger för utgången, i samma ordning som punkterna.
+    pub fn led_colors(&mut self, device: &wgpu::Device, output: OutputId) -> Option<&[[f32; 3]]> {
+        let _ = device.poll(wgpu::PollType::Poll);
+        let state = self.leds.get_mut(&output)?;
+        state.collect();
+        Some(&state.result)
     }
 
     /// Laddar upp en ny bildruta för en källa (skapar/ändrar storlek på texturen vid behov).
