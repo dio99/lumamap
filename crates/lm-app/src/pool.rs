@@ -123,4 +123,12 @@ impl MediaPool {
             }
         }
     }
+
+    pub fn for_each_video_ref(&self, mut f: impl FnMut(&dyn MediaSource)) {
+        for e in self.items.values() {
+            if e.media.is_video() {
+                f(e.media.as_ref());
+            }
+        }
+    }
 }

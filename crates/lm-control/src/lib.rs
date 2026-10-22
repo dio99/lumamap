@@ -20,6 +20,7 @@
 
 pub mod artnet;
 pub mod midi;
+pub mod remote;
 
 use rosc::{OscMessage, OscPacket, OscType};
 use std::net::UdpSocket;

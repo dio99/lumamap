@@ -57,6 +57,57 @@ pub struct Settings {
     /// DMX-ljus via Art-Net.
     #[serde(default)]
     pub artnet: ArtNetSettings,
+    /// Fjärrkontroll i mobilen (webbsida i det lokala nätverket).
+    #[serde(default)]
+    pub remote_enabled: bool,
+    #[serde(default = "default_remote_port")]
+    pub remote_port: u16,
+    /// Börja om från första cuen efter den sista (för automatiska cues).
+    #[serde(default)]
+    pub loop_cues: bool,
+    /// Visa bara under vissa tider, t.ex. en installation 16–23.
+    #[serde(default)]
+    pub schedule: Schedule,
+}
+
+/// Tider då showen är på. Utanför dem är projektorerna svarta och videorna pausade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Schedule {
+    pub enabled: bool,
+    /// Minuter efter midnatt.
+    pub on: u16,
+    pub off: u16,
+}
+
+impl Default for Schedule {
+    fn default() -> Self {
+        Schedule { enabled: false, on: 16 * 60, off: 23 * 60 }
+    }
+}
+
+impl Schedule {
+    /// Om showen ska vara på vid `minute` (minuter efter midnatt). Klarar
+    /// tider över midnatt, t.ex. 20:00–02:00.
+    pub fn is_on(&self, minute: u16) -> bool {
+        if !self.enabled {
+            return true;
+        }
+        let m = minute % (24 * 60);
+        if self.on <= self.off {
+            (self.on..self.off).contains(&m)
+        } else {
+            m >= self.on || m < self.off
+        }
+    }
+
+    /// "16:00"
+    pub fn format(minute: u16) -> String {
+        format!("{:02}:{:02}", minute / 60 % 24, minute % 60)
+    }
+}
+
+fn default_remote_port() -> u16 {
+    8077
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -162,6 +213,10 @@ impl Default for Settings {
             bpm: default_bpm(),
             audio: AudioSetting::Off,
             artnet: ArtNetSettings::default(),
+            remote_enabled: false,
+            remote_port: default_remote_port(),
+            loop_cues: false,
+            schedule: Schedule::default(),
         }
     }
 }
@@ -179,6 +234,9 @@ pub struct Cue {
     /// Lampornas läge (lampor som inte finns med lämnas orörda).
     #[serde(default)]
     pub lamps: Vec<CueLamp>,
+    /// Gå vidare till nästa cue automatiskt så här många sekunder efter GO.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -776,6 +834,20 @@ impl Project {
                     color: l.color,
                 })
                 .collect(),
+            auto: None,
+        }
+    }
+
+    /// Cuen efter `current` (index), eller den första om ingen körs. Efter
+    /// den sista: den första om `loop_cues`, annars ingen.
+    pub fn next_cue_index(&self, current: Option<usize>) -> Option<usize> {
+        let n = self.cues.len();
+        match current {
+            _ if n == 0 => None,
+            None => Some(0),
+            Some(i) if i + 1 < n => Some(i + 1),
+            Some(_) if self.settings.loop_cues => Some(0),
+            Some(_) => None,
         }
     }
 
@@ -1015,6 +1087,37 @@ mod tests {
                 assert!(dir.join(s.kind.path().unwrap()).exists(), "{name}: {}", s.name);
             }
         }
+    }
+
+    #[test]
+    fn schedule_handles_midnight() {
+        let day = Schedule { enabled: true, on: 16 * 60, off: 23 * 60 };
+        assert!(!day.is_on(15 * 60 + 59));
+        assert!(day.is_on(16 * 60));
+        assert!(day.is_on(22 * 60 + 59));
+        assert!(!day.is_on(23 * 60));
+        let night = Schedule { enabled: true, on: 20 * 60, off: 2 * 60 };
+        assert!(night.is_on(23 * 60));
+        assert!(night.is_on(60));
+        assert!(!night.is_on(12 * 60));
+        assert!(Schedule { enabled: false, ..night }.is_on(12 * 60));
+        assert_eq!(Schedule::format(16 * 60 + 5), "16:05");
+    }
+
+    #[test]
+    fn next_cue_wraps_only_when_looping() {
+        let mut p = Project::new();
+        for i in 0..3 {
+            let c = p.capture_cue(format!("{i}"), 0.0);
+            p.cues.push(c);
+        }
+        assert_eq!(p.next_cue_index(None), Some(0));
+        assert_eq!(p.next_cue_index(Some(1)), Some(2));
+        assert_eq!(p.next_cue_index(Some(2)), None);
+        p.settings.loop_cues = true;
+        assert_eq!(p.next_cue_index(Some(2)), Some(0));
+        // Cues utan `auto` sparas som förut.
+        assert!(!p.to_ron().unwrap().contains("auto"));
     }
 
     #[test]

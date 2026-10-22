@@ -11,6 +11,7 @@ mod canvas;
 mod library;
 mod panels;
 mod pool;
+mod remote_ui;
 mod show;
 mod welcome;
 

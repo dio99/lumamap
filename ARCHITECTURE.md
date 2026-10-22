@@ -111,7 +111,7 @@ lumamap/
 │   ├── lm-geom/               Homografi, mesh-splines, hit-test, kamerakalibrering.
 │   ├── lm-media/              GStreamer-källor (fil, kamera, ström), bild, ljudanalys.
 │   ├── lm-render/             wgpu: ytor, effekter, mönster, YUV, edge blend.
-│   ├── lm-control/            OSC-server, rå MIDI, Art-Net.
+│   ├── lm-control/            OSC-server, rå MIDI, Art-Net, webbserver för mobil-fjärrkontrollen.
 │   └── lm-app/                main(): fönster, egui-editor (library, panels, canvas, welcome), showstyrning, kalibrering.
 ├── shaders/                   WGSL
 ├── packaging/                 .desktop, ikon, AppImage, Flatpak
@@ -307,7 +307,7 @@ huvudtråden – exakt samma väg som musen.
 | **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
 | **v1.1 – UI/UX** | En "➕ Lägg till"-meny, dra media till ytor, levande miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy med exempel och senaste projekt, tydligare cue-lista (▶ nu, › nästa). | ✅ |
 | **v1.2** | Snäpp mot andra ytors hörn och kanter och bildens kant (Ctrl = fritt), kantljus-effekter (jagande ljus, neonram, ljussvep) och exemplet `geometry.lmap`. | ✅ |
-| **v1.3** | Fjärrkontroll i mobilen (webbsida + QR-kod), automatisk tidslinje för cues, schema (start/släck på klockslag). | |
+| **v1.3** | Fjärrkontroll i mobilen (webbsida i `lm-control::remote` med hemlig nyckel + QR-kod), cues som går vidare automatiskt och loopar, schema (start/släck på klockslag, lokal tid via jiff). | ✅ |
 | **v1.4** | Klippgrid för live-byten (på nästa beat), LED-pixelmappning via Art-Net. | |
 | Senare | Rörelseinteraktivitet via webbkamera, ritläge för ljus, NDI-källor, kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
 

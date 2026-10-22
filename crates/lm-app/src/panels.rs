@@ -184,6 +184,12 @@ impl LumaApp {
                     if ui.button(t("💡 Ljus (DMX)…", "💡 Lights (DMX)…")).clicked() {
                         self.dmx_window_open = true;
                     }
+                    if ui.button(t("📱 Fjärrkontroll i mobilen…", "📱 Phone remote…")).clicked() {
+                        self.remote_window_open = true;
+                    }
+                    if ui.button(t("⏰ Schema…", "⏰ Schedule…")).clicked() {
+                        self.schedule_window_open = true;
+                    }
                     ui.separator();
                     ui.menu_button("🌐 Language / Språk", |ui| {
                         for lang in Language::ALL {
@@ -276,6 +282,26 @@ impl LumaApp {
                 let color = if fresh { ACCENT } else { color };
                 if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text(t("OSC-inställningar", "OSC settings")).clicked() {
                     self.osc_window_open = true;
+                }
+                // Mobil-fjärrkontrollen: grön när den är på, blinkar vid tryck.
+                if self.project.settings.remote_enabled {
+                    let fresh = self.remote_last.is_some_and(|t| t.elapsed() < Duration::from_millis(400));
+                    let color = if self.remote_error.is_some() {
+                        Color32::from_rgb(255, 100, 100)
+                    } else if fresh {
+                        ACCENT
+                    } else {
+                        Color32::from_rgb(120, 200, 120)
+                    };
+                    if ui.add(egui::Button::new(RichText::new("📱").color(color)).frame(false)).on_hover_text(t("Fjärrkontroll i mobilen", "Phone remote")).clicked() {
+                        self.remote_window_open = true;
+                    }
+                }
+                if let Some(on) = self.schedule_on {
+                    let (text, color) = if on { ("⏰", Color32::from_rgb(120, 200, 120)) } else { ("⏰", Color32::from_rgb(255, 200, 80)) };
+                    if ui.add(egui::Button::new(RichText::new(text).color(color)).frame(false)).on_hover_text(t("Schema", "Schedule")).clicked() {
+                        self.schedule_window_open = true;
+                    }
                 }
                 let devices = self.midi.devices().len();
                 let fresh = self.midi_last.as_ref().is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300));

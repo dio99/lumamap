@@ -120,6 +120,20 @@ pub struct LumaApp {
     pub examples: Option<Vec<crate::welcome::Example>>,
     /// Punkten ett drag just snäppte till (ritas som en ring).
     pub snap_mark: Option<lm_core::Pt>,
+    /// Fjärrkontroll i mobilen.
+    pub remote: Option<lm_control::remote::RemoteServer>,
+    pub remote_error: Option<String>,
+    pub remote_tried: Option<(u16, String)>,
+    pub remote_token: String,
+    pub remote_state_at: Instant,
+    pub remote_last: Option<Instant>,
+    pub remote_window_open: bool,
+    /// När nuvarande cue startades (för automatiska cues).
+    pub cue_started: Option<Instant>,
+    /// Schemat: om showen är på just nu (`None` = inget schema).
+    pub schedule_on: Option<bool>,
+    pub schedule_checked: Instant,
+    pub schedule_window_open: bool,
 }
 
 impl LumaApp {
@@ -197,6 +211,17 @@ impl LumaApp {
             welcome_closed: false,
             examples: None,
             snap_mark: None,
+            remote: None,
+            remote_error: None,
+            remote_tried: None,
+            remote_token: crate::remote_ui::load_token(),
+            remote_state_at: Instant::now(),
+            remote_last: None,
+            remote_window_open: false,
+            cue_started: None,
+            schedule_on: None,
+            schedule_checked: Instant::now() - Duration::from_secs(10),
+            schedule_window_open: false,
         };
 
         match startup.file {
@@ -464,6 +489,9 @@ impl LumaApp {
         self.current_cue = None;
         self.selected_cue = None;
         self.fade = None;
+        self.cue_started = None;
+        self.schedule_on = None;
+        self.schedule_checked = Instant::now() - Duration::from_secs(10);
         self.opts = RenderOptions::default();
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
@@ -938,6 +966,9 @@ impl eframe::App for LumaApp {
         }
 
         self.poll_osc();
+        self.poll_remote();
+        self.tick_schedule();
+        self.tick_auto_cue();
         self.poll_midi();
         self.poll_audio();
         self.send_dmx();
@@ -955,6 +986,8 @@ impl eframe::App for LumaApp {
         self.calibration_window(&ctx);
         self.dmx_window(&ctx);
         self.midi_window(&ctx);
+        self.remote_window(&ctx);
+        self.schedule_window(&ctx);
         self.dialogs(&ctx);
         self.autosave();
 
@@ -984,7 +1017,7 @@ fn output_viewport(id: OutputId) -> ViewportId {
     ViewportId::from_hash_of(("output", id))
 }
 
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))

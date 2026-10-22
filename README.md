@@ -49,7 +49,11 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 
 **Show control**
 - **Cues** with fades: store which surfaces are visible, how bright and with
-  which media, and step through them with **Enter**.
+  which media, and step through them with **Enter** – or let them run by
+  themselves after a set time, in a loop.
+- **Phone remote:** scan a QR code and get GO, Black, brightness and the cue
+  list on your phone – no app needed.
+- **Schedule** for installations: on at 16:00, black at 23:00, every day.
 - **OSC** (TouchOSC, QLab, …), **MIDI** controllers with learn, and **DMX
   lights over Art-Net** that fade with the cues – a lamp can even take its
   colour from a video.
@@ -253,6 +257,31 @@ then drives the effect, and the tempo is picked up from the beat (shown as
 🎵 next to the tempo). *Computer audio* listens to whatever the computer
 plays, so music from any player works without cables.
 
+## Phone remote
+
+☰ → **📱 Phone remote…** → tick **Control the show from a phone**, then scan
+the QR code with the phone's camera. The page has a big **GO** button, Back,
+Black, Play, a brightness slider and the cue list (tap a cue to go to it).
+The phone has to be on the same Wi-Fi as the computer.
+
+<img src="docs/remote.jpg" alt="The phone remote: a big GO button with the next cue, Back, Black, Play, brightness and the cue list" width="260">
+
+The address contains a secret key, so nobody else on the network can control
+the show; **🔄 New code** changes it. The remote is off until you turn it on,
+and a 📱 in the status bar shows that it is running.
+
+## Shows that run by themselves
+
+- **Automatic cues:** select a cue and tick **⏱ Next after** with a time.
+  The cue list then counts down and goes on by itself. Press **🔁** next to
+  GO to start over from the first cue after the last.
+- **Schedule:** ☰ → **⏰ Schedule…** → **Only show at certain times**, e.g.
+  16:00–23:00 (times past midnight work too). Outside those times the
+  projectors are black and the videos paused; when it is time again the
+  first cue starts.
+- Start the computer with `lumamap --play show.lmap` (e.g. from autostart),
+  and an installation runs on its own for weeks.
+
 ## OSC remote control
 
 LumaMap listens on UDP port **12345** (change it under ☰ → OSC remote
@@ -339,7 +368,7 @@ The code is a Cargo workspace:
 | `lm-geom` | Homographies, mesh splines, hit testing, camera calibration. |
 | `lm-media` | GStreamer sources (file, camera, stream), images, sound analysis. |
 | `lm-render` | wgpu rendering and shaders: surfaces, effects, patterns, YUV conversion, edge blending. |
-| `lm-control` | OSC server, raw MIDI input, Art-Net output. |
+| `lm-control` | OSC server, raw MIDI input, Art-Net output, the web server for the phone remote. |
 | `lm-app` | The application: windows, egui editor, show control. |
 
 [ARCHITECTURE.md](ARCHITECTURE.md) (in Swedish) describes the design and the

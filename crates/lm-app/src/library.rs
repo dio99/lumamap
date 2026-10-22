@@ -444,12 +444,7 @@ impl LumaApp {
     fn cue_list(&mut self, ui: &mut Ui) {
         let n = self.project.cues.len();
         let current = self.current_cue.and_then(|id| self.project.cues.iter().position(|c| c.id == id));
-        let next = match current {
-            Some(i) if i + 1 < n => Some(i + 1),
-            Some(_) => None,
-            None if n > 0 => Some(0),
-            None => None,
-        };
+        let next = self.project.next_cue_index(current).filter(|j| Some(*j) != current);
         ui.horizontal(|ui| {
             ui.heading("Cues");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -460,6 +455,16 @@ impl LumaApp {
                 };
                 if ui.add_enabled(next.is_some(), go).on_hover_text(hint).clicked() {
                     self.go_next_cue(1);
+                }
+                let mut looping = self.project.settings.loop_cues;
+                if ui
+                    .toggle_value(&mut looping, "🔁")
+                    .on_hover_text(t("Börja om från första cuen efter den sista", "Start over from the first cue after the last"))
+                    .changed()
+                {
+                    let mut settings = self.project.settings.clone();
+                    settings.loop_cues = looping;
+                    self.exec(Command::ReplaceSettings(settings), None);
                 }
             });
         });
@@ -492,7 +497,14 @@ impl LumaApp {
             painter.text(egui::pos2(rect.min.x + 10.0, y), egui::Align2::CENTER_CENTER, mark, egui::FontId::proportional(14.0), mark_color);
             let color = if Some(i) == current { Color32::WHITE } else { v.text_color() };
             painter.text(egui::pos2(rect.min.x + 22.0, y), egui::Align2::LEFT_CENTER, format!("{}. {}", i + 1, c.name), egui::FontId::proportional(14.0), color);
-            painter.text(egui::pos2(rect.max.x - 30.0, y), egui::Align2::RIGHT_CENTER, format!("{:.1} s", c.fade), egui::FontId::proportional(12.0), DIM);
+            // Automatisk cue: nedräkning när den körs, annars ⏱ och tiden.
+            let meta = match (self.auto_remaining(c.id), c.auto) {
+                (Some(left), _) => format!("⏱ {left:.0} s"),
+                (None, Some(a)) => format!("⏱ {a:.0} s"),
+                (None, None) => format!("{:.1} s", c.fade),
+            };
+            let meta_color = if c.auto.is_some() { Color32::from_rgb(255, 200, 80) } else { DIM };
+            painter.text(egui::pos2(rect.max.x - 30.0, y), egui::Align2::RIGHT_CENTER, meta, egui::FontId::proportional(12.0), meta_color);
             if (ui.rect_contains_pointer(rect) || selected)
                 && row_button(ui, rect, rect.max.x - 12.0, RichText::new("🗑").color(DIM), t("Ta bort cue", "Delete cue"))
             {
@@ -544,6 +556,22 @@ impl LumaApp {
                 let r = ui.add(egui::DragValue::new(&mut c.fade).range(0.0..=60.0).speed(0.05).suffix(" s"));
                 if r.changed() {
                     gesture = Some(self.field_gesture(&r));
+                }
+            });
+            ui.horizontal(|ui| {
+                let mut auto = c.auto.is_some();
+                if ui
+                    .checkbox(&mut auto, t("⏱ Nästa efter", "⏱ Next after"))
+                    .on_hover_text(t("Gå vidare till nästa cue automatiskt – för shower som rullar av sig själva", "Go on to the next cue automatically – for shows that run by themselves"))
+                    .changed()
+                {
+                    c.auto = auto.then_some(c.auto.unwrap_or(10.0).max(c.fade));
+                }
+                if let Some(a) = &mut c.auto {
+                    let r = ui.add(egui::DragValue::new(a).range(0.5..=3600.0).speed(0.2).suffix(" s"));
+                    if r.changed() {
+                        gesture = Some(self.field_gesture(&r));
+                    }
                 }
             });
             ui.horizontal(|ui| {

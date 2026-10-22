@@ -20,3 +20,5 @@ rfd.workspace = true
 log.workspace = true
 env_logger.workspace = true
 image.workspace = true
+qrcode.workspace = true
+jiff.workspace = true

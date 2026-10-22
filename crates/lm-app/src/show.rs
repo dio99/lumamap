@@ -28,6 +28,7 @@ impl LumaApp {
         let Some(cue) = self.project.cue(id).cloned() else { return };
         self.fade = None;
         self.current_cue = Some(id);
+        self.cue_started = Some(Instant::now());
         let gesture = self.new_gesture();
         let (start, steps) = cue_start(&self.project, &cue);
         self.exec(start, Some(gesture));
@@ -49,12 +50,141 @@ impl LumaApp {
         }
         let current = self.current_cue.and_then(|id| self.project.cues.iter().position(|c| c.id == id));
         let next = match current {
+            // Framåt följer "börja om efter sista".
+            Some(i) if step == 1 => self.project.next_cue_index(Some(i)).map_or(i as isize, |j| j as isize),
             Some(i) => (i as isize + step).clamp(0, n - 1),
             None => 0,
         };
         if current != Some(next as usize) {
             self.go_cue(self.project.cues[next as usize].id);
         }
+    }
+
+    /// Cues med "gå vidare efter" går till nästa när tiden är ute.
+    pub fn tick_auto_cue(&mut self) {
+        let Some(i) = self.current_cue.and_then(|id| self.project.cues.iter().position(|c| c.id == id)) else { return };
+        let (Some(auto), Some(started)) = (self.project.cues[i].auto, self.cue_started) else { return };
+        // Inte medan schemat håller showen släckt.
+        if self.schedule_on == Some(false) || started.elapsed().as_secs_f32() < auto {
+            return;
+        }
+        match self.project.next_cue_index(Some(i)) {
+            Some(j) => {
+                let id = self.project.cues[j].id;
+                self.go_cue(id);
+            }
+            None => self.cue_started = None,
+        }
+    }
+
+    /// Sekunder kvar tills en automatisk cue går vidare.
+    pub fn auto_remaining(&self, id: CueId) -> Option<f32> {
+        let cue = self.project.cue(id)?;
+        let started = self.cue_started.filter(|_| self.current_cue == Some(id))?;
+        Some((cue.auto? - started.elapsed().as_secs_f32()).max(0.0))
+    }
+
+    /// Schemat: släcker och pausar utanför tiderna, tänder och startar första
+    /// cuen när det blir dags. Kollas en gång per sekund.
+    pub fn tick_schedule(&mut self) {
+        if self.schedule_checked.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.schedule_checked = Instant::now();
+        let schedule = self.project.settings.schedule;
+        if !schedule.enabled {
+            if self.schedule_on == Some(false) {
+                self.opts.blackout = false;
+            }
+            self.schedule_on = None;
+            return;
+        }
+        let now = jiff::Zoned::now();
+        let on = schedule.is_on(now.hour() as u16 * 60 + now.minute() as u16);
+        if self.schedule_on == Some(on) {
+            return;
+        }
+        let first = self.schedule_on.is_none();
+        self.schedule_on = Some(on);
+        if on {
+            if first {
+                return;
+            }
+            self.opts.blackout = false;
+            self.media.for_each_video(|m| m.play());
+            if let Some(c) = self.project.cues.first() {
+                let id = c.id;
+                self.go_cue(id);
+            }
+            self.notify(t("Schemat: showen startar", "Schedule: the show starts"));
+        } else {
+            self.opts.blackout = true;
+            self.media.for_each_video(|m| m.pause());
+            self.notify(format!("{} {}", t("Schemat: svart till", "Schedule: black until"), lm_core::Schedule::format(schedule.on)));
+        }
+    }
+
+    /// Mobil-fjärrkontrollen: startar/stoppar servern efter inställningarna,
+    /// utför det mobilen ber om och skickar läget dit.
+    pub fn poll_remote(&mut self) {
+        let settings = &self.project.settings;
+        let want = settings.remote_enabled.then(|| (settings.remote_port, self.remote_token.clone()));
+        if want != self.remote_tried {
+            self.remote_tried = want.clone();
+            self.remote = None;
+            self.remote_error = None;
+            if let Some((port, token)) = want {
+                match lm_control::remote::RemoteServer::start(port, token) {
+                    Ok(s) => self.remote = Some(s),
+                    Err(e) => {
+                        log::warn!("{e}");
+                        self.remote_error = Some(e);
+                    }
+                }
+            }
+        }
+        let cmds = self.remote.as_ref().map(|s| s.poll()).unwrap_or_default();
+        for cmd in cmds {
+            self.remote_last = Some(Instant::now());
+            use lm_control::remote::RemoteCmd;
+            match cmd {
+                RemoteCmd::Go => self.go_next_cue(1),
+                RemoteCmd::Prev => self.go_next_cue(-1),
+                RemoteCmd::Cue(i) => {
+                    if let Some(id) = self.project.cues.get(i).map(|c| c.id) {
+                        self.go_cue(id);
+                    }
+                }
+                RemoteCmd::Blackout(on) => self.opts.blackout = on,
+                RemoteCmd::Master(v) => self.opts.master = v,
+                RemoteCmd::PlayPause => self.toggle_play_all(),
+            }
+            // Svara snabbt med det nya läget.
+            self.remote_state_at = Instant::now() - Duration::from_secs(1);
+        }
+        if self.remote.is_some() && self.remote_state_at.elapsed() >= Duration::from_millis(250) {
+            self.remote_state_at = Instant::now();
+            let json = self.remote_state();
+            if let Some(s) = &self.remote {
+                s.set_state(json);
+            }
+        }
+    }
+
+    fn remote_state(&self) -> String {
+        use lm_control::remote::{state_json, CueInfo};
+        let cues: Vec<CueInfo> = self.project.cues.iter().map(|c| CueInfo { name: &c.name, fade: c.fade, auto: c.auto }).collect();
+        let current = self.current_cue.and_then(|id| self.project.cues.iter().position(|c| c.id == id));
+        let next = self.project.next_cue_index(current).filter(|n| Some(*n) != current);
+        let name = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| t("Namnlöst projekt", "Untitled project").into());
+        let mut playing = false;
+        self.media.for_each_video_ref(|m| playing |= m.is_playing());
+        state_json(&name, &cues, current, next, self.opts.blackout, self.opts.master, playing)
     }
 
     /// Driver en pågående övergång ett steg. Anropas varje bildruta.
