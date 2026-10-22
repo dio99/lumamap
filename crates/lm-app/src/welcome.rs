@@ -16,10 +16,11 @@ pub struct Example {
 }
 
 /// Exemplen och deras namn, i den ordning de visas.
-fn example_names() -> [(&'static str, &'static str); 6] {
+fn example_names() -> [(&'static str, &'static str); 7] {
     [
         ("showcase", t("Översikt", "Showcase")),
         ("geometry", t("Geometri", "Geometry")),
+        ("objects", t("3D-objekt", "3D objects")),
         ("facade", t("Fasad", "Façade")),
         ("halloween", "Halloween"),
         ("christmas", t("Jul", "Christmas")),

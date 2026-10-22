@@ -30,6 +30,13 @@ impl LumaApp {
         self.current_cue = Some(id);
         self.cue_started = Some(Instant::now());
         let gesture = self.new_gesture();
+        // Ytor som byter media tonar över under cuens övergångstid.
+        for cs in &cue.surfaces {
+            let old = self.project.surface(cs.surface).and_then(|s| s.source);
+            if let Some(old) = old.filter(|o| Some(*o) != cs.source) {
+                self.start_media_fade(cs.surface, old, cue.fade);
+            }
+        }
         let (start, steps) = cue_start(&self.project, &cue);
         self.exec(start, Some(gesture));
         if !steps.is_empty() {
@@ -58,6 +65,29 @@ impl LumaApp {
         if current != Some(next as usize) {
             self.go_cue(self.project.cues[next as usize].id);
         }
+    }
+
+    /// Låter ytan tona över från `old` till sitt nya media på `seconds` sekunder.
+    pub fn start_media_fade(&mut self, surface: SurfaceId, old: SourceId, seconds: f32) {
+        if seconds > 0.01 {
+            self.media_fades.insert(surface, (old, Instant::now(), seconds));
+        } else {
+            self.media_fades.remove(&surface);
+        }
+    }
+
+    /// Räknar fram övertoningarnas läge till renderaren. Anropas varje bildruta.
+    pub fn tick_media_fades(&mut self) {
+        self.media_fades.retain(|_, (_, start, secs)| start.elapsed().as_secs_f32() < *secs);
+        self.opts.crossfades = self
+            .media_fades
+            .iter()
+            .map(|(id, (old, start, secs))| {
+                let t = (start.elapsed().as_secs_f32() / secs).clamp(0.0, 1.0);
+                // Mjuk start och slut.
+                (*id, (*old, t * t * (3.0 - 2.0 * t)))
+            })
+            .collect();
     }
 
     /// Cues med "gå vidare efter" går till nästa när tiden är ute.

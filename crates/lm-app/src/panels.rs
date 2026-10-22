@@ -1317,13 +1317,24 @@ impl LumaApp {
     }
 }
 
-pub(crate) const SHAPES: [Shape; 4] = [Shape::Quad, Shape::Triangle, Shape::Ellipse, Shape::Mesh { cols: 4, rows: 4 }];
+pub(crate) const SHAPES: [Shape; 7] = [
+    Shape::Quad,
+    Shape::Triangle,
+    Shape::Ellipse,
+    Shape::Mesh { cols: 4, rows: 4 },
+    Shape::Sphere,
+    Shape::Cylinder,
+    Shape::Cone,
+];
 
 pub(crate) fn shape_label(shape: Shape) -> &'static str {
     match shape {
         Shape::Quad => t("Fyrhörn", "Quad"),
         Shape::Triangle => t("Triangel", "Triangle"),
         Shape::Ellipse => t("Ellips", "Ellipse"),
+        Shape::Sphere => t("Klot (boll)", "Sphere (ball)"),
+        Shape::Cylinder => t("Cylinder (pelare)", "Cylinder (pillar)"),
+        Shape::Cone => t("Kon", "Cone"),
         Shape::Mesh { .. } => t("Mesh", "Mesh"),
     }
 }
@@ -1344,6 +1355,9 @@ pub(crate) fn shape_hint(shape: Shape) -> &'static str {
         Shape::Quad => t("Fyra hörn, perspektivriktig", "Four corners, perspective-correct"),
         Shape::Triangle => t("Tre hörn, t.ex. en gavel", "Three corners, e.g. a gable"),
         Shape::Ellipse => t("Rund yta inuti fyra hörn – blir en perspektivriktig ellips", "Round surface inside four corners – becomes a perspective-correct ellipse"),
+        Shape::Sphere => t("En boll: dra hörnen runt bollen, bilden lindas runt den", "A ball: drag the corners around the ball, the image wraps around it"),
+        Shape::Cylinder => t("En rund pelare eller tunna: bilden följer rundningen", "A round pillar or barrel: the image follows the curve"),
+        Shape::Cone => t("En kon eller julgran med spetsen uppåt: bilden lindas runt den", "A cone or Christmas tree, tip up: the image wraps around it"),
         Shape::Mesh { .. } => t("Rutnät av punkter för böjda ytor, t.ex. pelare", "Grid of points for curved surfaces, e.g. pillars"),
     }
 }
@@ -1379,8 +1393,8 @@ pub enum PropTab {
 /// Punkter för `shape` som täcker fyrhörningen `quad`.
 pub(crate) fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
     match shape {
-        Shape::Quad | Shape::Ellipse => quad.to_vec(),
-        Shape::Triangle => lm_geom::triangle_from_quad(quad).to_vec(),
+        Shape::Quad | Shape::Ellipse | Shape::Sphere | Shape::Cylinder => quad.to_vec(),
+        Shape::Triangle | Shape::Cone => lm_geom::triangle_from_quad(quad).to_vec(),
         Shape::Mesh { cols, rows } => lm_geom::mesh_from_quad(quad, cols as usize, rows as usize),
     }
 }
@@ -1388,8 +1402,8 @@ pub(crate) fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
 /// Fyrhörningen som ytan fyller (för triangel: den den är inskriven i).
 fn surface_quad(s: &Surface) -> Option<[Pt; 4]> {
     match s.shape {
-        Shape::Quad | Shape::Ellipse => lm_geom::quad(&s.dst_pts),
-        Shape::Triangle => Some(lm_geom::quad_from_triangle(s.dst_pts.get(..3)?.try_into().ok()?)),
+        Shape::Quad | Shape::Ellipse | Shape::Sphere | Shape::Cylinder => lm_geom::quad(&s.dst_pts),
+        Shape::Triangle | Shape::Cone => Some(lm_geom::quad_from_triangle(s.dst_pts.get(..3)?.try_into().ok()?)),
         Shape::Mesh { cols, rows } => {
             let (c, r) = (cols as usize, rows as usize);
             let p = &s.dst_pts;

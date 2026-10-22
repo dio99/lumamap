@@ -571,6 +571,15 @@ pub enum Shape {
     Ellipse,
     /// Rutnät med `cols × rows` kontrollpunkter (radvis) för böjda ytor.
     Mesh { cols: u32, rows: u32 },
+    /// Ett klot (boll) inskrivet i fyra hörn. Bilden lindas runt den synliga
+    /// halvan så att den inte ser utdragen ut mot kanterna.
+    Sphere,
+    /// En cylinder (pelare, tunna) sedd från sidan, inskriven i fyra hörn.
+    /// Bilden pressas ihop mot kanterna som på en rund yta.
+    Cylinder,
+    /// En kon (strut, julgran) med spetsen uppåt, tre hörn som en triangel.
+    /// Bilden lindas runt konen.
+    Cone,
 }
 
 pub const MESH_MIN: u32 = 2;
@@ -580,8 +589,8 @@ impl Shape {
     /// Antal punkter i `dst_pts` för formen.
     pub fn point_count(&self) -> usize {
         match *self {
-            Shape::Quad | Shape::Ellipse => 4,
-            Shape::Triangle => 3,
+            Shape::Quad | Shape::Ellipse | Shape::Sphere | Shape::Cylinder => 4,
+            Shape::Triangle | Shape::Cone => 3,
             Shape::Mesh { cols, rows } => (cols * rows) as usize,
         }
     }
@@ -1275,6 +1284,19 @@ mod tests {
         assert!(p.sources.iter().all(|s| s.kind.path().is_none()));
         for kind in [EffectKind::Chase, EffectKind::Neon, EffectKind::Sweep] {
             assert!(p.surfaces.iter().any(|s| s.effect.kind == kind), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn objects_project_uses_3d_shapes() {
+        let p = Project::from_ron(include_str!("../../../examples/objects.lmap")).unwrap();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        for shape in [Shape::Sphere, Shape::Cylinder, Shape::Cone] {
+            let s = p.surfaces.iter().find(|s| s.shape == shape).unwrap_or_else(|| panic!("{shape:?}"));
+            assert_eq!(s.dst_pts.len(), shape.point_count());
+        }
+        for s in &p.sources {
+            assert!(dir.join(s.kind.path().unwrap()).exists(), "{}", s.name);
         }
     }
 

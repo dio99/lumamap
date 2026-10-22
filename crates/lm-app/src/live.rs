@@ -36,6 +36,9 @@ impl LumaApp {
 
     fn apply_clip(&mut self, surface: SurfaceId, source: SourceId) {
         let Some(mut s) = self.project.surface(surface).cloned() else { return };
+        if let Some(old) = s.source.filter(|o| *o != source) {
+            self.start_media_fade(surface, old, self.live_fade);
+        }
         s.source = Some(source);
         s.visible = true;
         self.exec(Command::ReplaceSurface(s), None);
@@ -79,6 +82,9 @@ impl LumaApp {
                 self.live_target = pick;
                 ui.checkbox(&mut self.live_quantize, t("⏱ På nästa slag", "⏱ On the next beat"))
                     .on_hover_text(t("Bytet väntar till nästa taktslag så att det landar i takt", "The change waits for the next beat so it lands in time"));
+                ui.label(t("Övertoning", "Crossfade"));
+                ui.add(egui::DragValue::new(&mut self.live_fade).range(0.0..=10.0).speed(0.05).suffix(" s"))
+                    .on_hover_text(t("0 = hårt klipp", "0 = hard cut"));
             });
             ui.label(RichText::new(t("Klicka på ett klipp, eller tryck 1–9.", "Click a clip, or press 1–9.")).size(12.0).color(DIM));
             ui.add_space(6.0);

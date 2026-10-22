@@ -19,6 +19,10 @@ mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
+/// `res.z` i ytans uniform: 1 = ellips, 2 = klot, 3 = cylinder, 4 = kon.
+const ROUND_SPHERE: f32 = 2.0;
+const ROUND_CYLINDER: f32 = 3.0;
+const ROUND_CONE: f32 = 4.0;
 /// Upplösning för mönsterkällor.
 const GENERATOR_SIZE: [u32; 2] = [1280, 720];
 const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 + 16 * 16;
@@ -111,6 +115,9 @@ pub struct RenderOptions {
     pub audio: f32,
     /// Kalibrering med kamera: utgången visas svart med (högst) en vit punkt.
     pub calibration: Option<(OutputId, Option<[f32; 2]>)>,
+    /// Ytor som tonar över från ett tidigare media: (gammal källa, hur långt
+    /// det nya mediet har kommit 0..1).
+    pub crossfades: HashMap<SurfaceId, (SourceId, f32)>,
 }
 
 impl Default for RenderOptions {
@@ -123,6 +130,7 @@ impl Default for RenderOptions {
             beats: 0.0,
             audio: 0.0,
             calibration: None,
+            crossfades: HashMap::new(),
         }
     }
 }
@@ -458,17 +466,30 @@ impl Renderer {
             for s in project.surfaces.iter().filter(|s| s.output == out.id && s.visible) {
                 let test = opts.test_surfaces.contains(&s.id);
                 let tex = if test { None } else { s.source };
-                if !test && tex.is_none_or(|id| !self.sources.contains_key(&id)) {
-                    continue;
+                let new_ok = test || tex.is_some_and(|id| self.sources.contains_key(&id));
+                // Övertoning: gamla mediet under, det nya tonas in ovanpå.
+                let fade = opts
+                    .crossfades
+                    .get(&s.id)
+                    .filter(|(old, _)| !test && Some(*old) != s.source && self.sources.contains_key(old))
+                    .copied();
+                let mut layers: Vec<(Tex, f32)> = Vec::with_capacity(2);
+                if let Some((old, t)) = fade {
+                    // Normal: det gamla täcks av det nya. Ljusa lägen: tona ut det gamla.
+                    let keep = if s.blend == BlendMode::Normal && new_ok { 1.0 } else { 1.0 - t };
+                    layers.push((Tex::Source(old), keep));
                 }
-                if let Some(mut geo) = surface_geometry(s, test, warp) {
+                if new_ok {
+                    layers.push((tex.map_or(Tex::Test, Tex::Source), fade.map_or(1.0, |f| f.1)));
+                }
+                for (tex, k) in layers {
+                    let Some(mut geo) = surface_geometry(s, test, warp) else { continue };
                     apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution, warp);
-                    geo.0.params[0] *= opts.master.clamp(0.0, 1.0);
+                    geo.0.params[0] *= opts.master.clamp(0.0, 1.0) * k.clamp(0.0, 1.0);
                     let c = &s.color;
                     geo.0.color = [c.brightness, c.contrast, c.gamma.max(0.05), c.saturation];
                     geo.0.res[3] = c.hue.to_radians();
                     apply_effect(&mut geo.0, s, opts);
-                    let tex = tex.map_or(Tex::Test, Tex::Source);
                     push_draw(&mut draws, &mut vertices, out.id, tex, s.blend, geo);
                 }
             }
@@ -617,7 +638,7 @@ fn apply_effect(u: &mut SurfaceUniform, s: &Surface, opts: &RenderOptions) {
         // Ett helt varv runt färghjulet per effektvarv.
         u.res[3] += phase * std::f32::consts::TAU;
     }
-    let triangle = if s.shape == Shape::Triangle { 1.0 } else { 0.0 };
+    let triangle = if matches!(s.shape, Shape::Triangle | Shape::Cone) { 1.0 } else { 0.0 };
     u.effect = [e.kind as u32 as f32, amount, phase, triangle];
 }
 
@@ -644,7 +665,17 @@ fn surface_geometry(s: &Surface, test: bool, warp: Option<&Homography>) -> Optio
     match s.shape {
         Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false, warp),
         Shape::Ellipse => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, true, warp),
+        Shape::Sphere | Shape::Cylinder => {
+            let mut g = quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false, warp)?;
+            g.0.res[2] = if s.shape == Shape::Sphere { ROUND_SPHERE } else { ROUND_CYLINDER };
+            Some(g)
+        }
         Shape::Triangle => triangle_geometry(s.dst_pts.get(..3)?.try_into().ok()?, &src, s.opacity, warp),
+        Shape::Cone => {
+            let mut g = triangle_geometry(s.dst_pts.get(..3)?.try_into().ok()?, &src, s.opacity, warp)?;
+            g.0.res[2] = ROUND_CONE;
+            Some(g)
+        }
         Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity, warp),
     }
 }

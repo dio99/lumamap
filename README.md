@@ -22,7 +22,9 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **What you see is what the projector shows** – the editor preview and the
   projector windows render the same image, live.
 - **Surfaces:** quad (perspective-correct, no diagonal seam), triangle,
-  ellipse and curved mesh for pillars and arches.
+  ellipse and curved mesh for arches – and **3D objects**: a sphere (ball),
+  a cylinder (round pillar, barrel) and a cone (Christmas tree), where the
+  image wraps around the object instead of looking stretched.
 - **Snapping:** corners snap to other surfaces and to the image edge, so
   neighbouring surfaces meet without gaps.
 - **Masks** with soft edges – cut out a window or a door. Masks stay put on
@@ -119,7 +121,7 @@ The binary ends up in `target/release/lumamap`.
 LumaMap opens with a welcome screen: add a video, open a project, or click
 one of the examples to see how a finished show is built.
 
-![Welcome screen with the six example projects](docs/welcome.jpg)
+![Welcome screen with the example projects](docs/welcome.jpg)
 
 1. Drag a video or image into the window. It appears on a new surface.
 2. Drag the surface's four corners until they fit the wall.
@@ -156,6 +158,12 @@ are on the welcome screen and under ☰ → **Recent**.
 with camera…** and **Start**. The projector shows nine dots one at a time
 (about ten seconds); then click the wall's four corners in the camera picture
 and the surface lands exactly there. Works best in a darkish room.
+
+**Balls, pillars and cones:** pick **Sphere**, **Cylinder** or **Cone** as
+the shape (under **⬜ New surface** or in the **Surface** tab). Drag the four
+corners to the edges of the ball or pillar (for a cone: the tip and the two
+bottom corners). The image then wraps around the object, so it is not
+stretched at the sides. The effect **Scroll** makes the object seem to spin.
 
 **Moving a show to another computer:** ☰ → **Collect project…** copies the
 project and every media file it uses into one folder.
@@ -209,6 +217,7 @@ There are also greeting cards: `god-jul.jpg`, `merry-christmas.jpg`,
 |---|---|
 | `examples/showcase.lmap` | Every surface type at once: fire on a triangle, space on a curved pillar, aurora in an ellipse, a masked plasma window, a neon floor |
 | `examples/geometry.lmap` | A geometric show without any video: a neon frame, a triangle of chasing lights, a tunnel pattern in a circle, two neon diamonds and a light sweep |
+| `examples/objects.lmap` | Mapping real objects: a galaxy on a ball, Matrix rain on a round pillar, a Christmas tree of lights on a cone |
 | `examples/christmas.lmap` | Snow on the façade, lights along the eaves, Santa, a "God Jul" greeting with glitter |
 | `examples/halloween.lmap` | Bats and the moon, a pumpkin on the steps, ghosts, a skeleton in the door, eyes in the bushes |
 | `examples/facade.lmap` | The brick wall illusion over the whole house, with the silhouette film in two windows |

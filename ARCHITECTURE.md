@@ -309,7 +309,9 @@ huvudtråden – exakt samma väg som musen.
 | **v1.2** | Snäpp mot andra ytors hörn och kanter och bildens kant (Ctrl = fritt), kantljus-effekter (jagande ljus, neonram, ljussvep) och exemplet `geometry.lmap`. | ✅ |
 | **v1.3** | Fjärrkontroll i mobilen (webbsida i `lm-control::remote` med hemlig nyckel + QR-kod), cues som går vidare automatiskt och loopar, schema (start/släck på klockslag, lokal tid via jiff). | ✅ |
 | **v1.4** | Live-fönster med klippgrid (klick eller 1–9, på nästa slag), LED-slingor som läser projektorbilden via en compute-pass (`shaders/led.wgsl`) och skickas som Art-Net över flera universum. | ✅ |
-| Senare | Rörelseinteraktivitet via webbkamera, ritläge för ljus, NDI-källor, kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
+| **v1.5** | Övertoning när media byts (cues och Live). 3D-objekt: klot, cylinder och kon där bilden lindas runt objektet (`wrap3d` i shadern) + exemplet `objects.lmap`. Markera flera ytor och flytta dem tillsammans. | |
+| **v1.6** | Rörelse från webbkameran styr effekter och kan starta en cue. Ritläge: rita ljuslinjer med musen. | |
+| Senare | NDI-källor (fungerar redan som ström om GStreamer-pluginet finns), kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
 
 Utöver planen har också tillkommit: färgjustering per yta, keystone per
 utgång, uppspelningshastighet, svartnivåkompensation, "Samla projekt",

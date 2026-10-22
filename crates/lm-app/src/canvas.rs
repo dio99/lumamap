@@ -148,7 +148,7 @@ impl LumaApp {
 
     /// Om vyn visar ytan som ellips (hörnen är då en ram runt ellipsen).
     fn is_ellipse(&self, id: SurfaceId, kind: PtKind) -> bool {
-        matches!(kind, PtKind::Dst(_)) && self.project.surface(id).is_some_and(|s| s.shape == Shape::Ellipse)
+        matches!(kind, PtKind::Dst(_)) && self.project.surface(id).is_some_and(|s| matches!(s.shape, Shape::Ellipse | Shape::Sphere))
     }
 
     /// Ytans kontur (normaliserad). För mesh och ellips följer den kurvorna.

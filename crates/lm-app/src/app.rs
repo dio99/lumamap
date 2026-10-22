@@ -143,6 +143,10 @@ pub struct LumaApp {
     pub led_colors: HashMap<lm_core::LedId, Vec<[f32; 3]>>,
     pub led_sampled: Instant,
     pub led_drag: Option<crate::leds::LedDrag>,
+    /// Pågående övertoningar mellan media: yta → (gammal källa, start, sekunder).
+    pub media_fades: HashMap<SurfaceId, (lm_core::SourceId, Instant, f32)>,
+    /// Övertoningstid för klippbyten i Live-fönstret.
+    pub live_fade: f32,
 }
 
 impl LumaApp {
@@ -238,6 +242,8 @@ impl LumaApp {
             led_colors: HashMap::new(),
             led_sampled: Instant::now(),
             led_drag: None,
+            media_fades: HashMap::new(),
+            live_fade: 0.5,
         };
 
         match startup.file {
@@ -508,6 +514,7 @@ impl LumaApp {
         self.cue_started = None;
         self.clip_pending = None;
         self.live_target = None;
+        self.media_fades.clear();
         self.schedule_on = None;
         self.schedule_checked = Instant::now() - Duration::from_secs(10);
         self.opts = RenderOptions::default();
@@ -956,6 +963,8 @@ impl eframe::App for LumaApp {
 
         // Kalibrering med kamera bestämmer vad projektorn visar, så den går först.
         self.tick_calibration(&ctx);
+
+        self.tick_media_fades();
 
         // 1. Media → GPU, och rendera alla utgångar.
         if let Some(rs) = frame.wgpu_render_state() {

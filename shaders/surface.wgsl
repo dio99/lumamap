@@ -16,7 +16,7 @@ struct SurfaceUniform {
     h2: mat3x3<f32>,
     // x = opacitet, y = antal maskpunkter (0 = ingen mask), z = mjuk kant (px), w = 1 om inverterad
     params: vec4<f32>,
-    // xy = utgångens upplösning i pixlar, z = 1 för ellips, w = nyansvridning (radianer)
+    // xy = utgångens upplösning i pixlar, z = form (1 ellips, 2 klot, 3 cylinder, 4 kon), w = nyansvridning (radianer)
     res: vec4<f32>,
     // Färgjustering: x = ljusstyrka, y = kontrast, z = gamma, w = mättnad
     color: vec4<f32>,
@@ -101,6 +101,46 @@ fn adjust(c: vec3<f32>) -> vec3<f32> {
 }
 
 const TAU: f32 = 6.2831853;
+const PI: f32 = 3.1415927;
+
+fn shape_mode() -> u32 {
+    return u32(u.res.z + 0.5);
+}
+
+// Ellips och klot är runda i bild.
+fn is_round() -> bool {
+    let m = shape_mode();
+    return m == 1u || m == 2u;
+}
+
+// 3D-former: från punkten på ytan i bild till var den hamnar i bilden som
+// lindas runt objektet. Projektorn ser objektet framifrån, så den synliga
+// halvan av bilden täcker objektets framsida utan att dras ut mot kanterna.
+fn wrap3d(p: vec2<f32>) -> vec2<f32> {
+    switch shape_mode() {
+        case 2u: {
+            // Klot: longitud och latitud på framsidan.
+            let d = (p - vec2<f32>(0.5)) * 2.0;
+            let z = sqrt(max(1.0 - dot(d, d), 0.0));
+            let lon = atan2(d.x, z);
+            let lat = asin(clamp(d.y, -1.0, 1.0));
+            return vec2<f32>(0.5 + lon / PI, 0.5 + lat / PI);
+        }
+        case 3u: {
+            // Cylinder: vinkeln runt axeln.
+            return vec2<f32>(0.5 + asin(clamp(p.x * 2.0 - 1.0, -1.0, 1.0)) / PI, p.y);
+        }
+        case 4u: {
+            // Kon med spetsen i (0.5, 0): bredden växer nedåt.
+            let half = max(p.y * 0.5, 1e-4);
+            let x = clamp((p.x - 0.5) / half, -1.0, 1.0);
+            return vec2<f32>(0.5 + asin(x) / PI, p.y);
+        }
+        default: {
+            return p;
+        }
+    }
+}
 
 // Källans färg vid ytans koordinater `param` (genomskinligt utanför utsnittet).
 fn sample_param(param: vec2<f32>) -> vec4<f32> {
@@ -157,7 +197,7 @@ fn warp(p: vec2<f32>, kind: u32, amount: f32, phase: f32) -> vec2<f32> {
 
 // Avstånd (0..0.5) till ytans kant i ytans koordinater, för konturglöden.
 fn edge_distance(p: vec2<f32>) -> f32 {
-    if (u.res.z > 0.5) {
+    if (is_round()) {
         return (1.0 - length(p - vec2<f32>(0.5)) * 2.0) * 0.5;
     }
     if (u.effect.w > 0.5) {
@@ -172,7 +212,7 @@ fn edge_distance(p: vec2<f32>) -> f32 {
 
 // Läget runt ytans kant, 0..1 ett varv medurs från övre vänstra hörnet.
 fn perimeter(p: vec2<f32>) -> f32 {
-    if (u.res.z > 0.5 || u.effect.w > 0.5) {
+    if (is_round() || u.effect.w > 0.5) {
         return fract(atan2(p.y - 0.5, p.x - 0.5) / TAU + 0.75);
     }
     let d = vec4<f32>(p.y, 1.0 - p.x, 1.0 - p.y, p.x);
@@ -199,6 +239,9 @@ fn bright_hue(rgb: vec3<f32>) -> vec3<f32> {
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let q2 = u.h2 * vec3<f32>(in.p, 1.0);
     let param = q2.xy / q2.z;
+    // Var på bilden punkten hamnar (lindad runt 3D-former); effekterna
+    // flyttar sedan bilden, så att "Rulla" snurrar objektet.
+    let tp = wrap3d(param);
     let kind = u32(u.effect.x + 0.5);
     let amount = u.effect.y;
     let phase = u.effect.z;
@@ -207,15 +250,15 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (kind == 6u) {
         // Oskärpa: ett ringformat urval runt punkten.
         let radius = amount * 0.03;
-        c = sample_param(param);
+        c = sample_param(tp);
         for (var k = 0; k < 12; k++) {
             let a = f32(k) * TAU / 12.0;
-            c += sample_param(param + vec2<f32>(cos(a), sin(a)) * radius);
-            c += sample_param(param + vec2<f32>(cos(a + 0.26), sin(a + 0.26)) * radius * 0.5);
+            c += sample_param(tp + vec2<f32>(cos(a), sin(a)) * radius);
+            c += sample_param(tp + vec2<f32>(cos(a + 0.26), sin(a + 0.26)) * radius * 0.5);
         }
         c /= 25.0;
     } else {
-        c = sample_param(warp(param, kind, amount, phase));
+        c = sample_param(warp(tp, kind, amount, phase));
     }
     var rgb = adjust(c.rgb);
     var alpha = c.a;
@@ -278,7 +321,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Ellips: kantutjämnad cirkel i ytans koordinater.
     let r = length(param - vec2<f32>(0.5)) * 2.0;
     let w = max(fwidth(r), 1e-4);
-    let ellipse = select(1.0, 1.0 - smoothstep(1.0 - w, 1.0 + w, r), u.res.z > 0.5);
+    let ellipse = select(1.0, 1.0 - smoothstep(1.0 - w, 1.0 + w, r), is_round());
     let a = alpha * u.params.x * ellipse * mask_alpha(in.pos);
     return vec4<f32>(rgb * a, a);
 }
