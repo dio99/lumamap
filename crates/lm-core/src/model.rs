@@ -492,12 +492,18 @@ pub enum EffectKind {
     ColorCycle = 8,
     Strobe = 9,
     Outline = 10,
+    Chase = 11,
+    Neon = 12,
+    Sweep = 13,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 11] = [
+    pub const ALL: [EffectKind; 14] = [
         EffectKind::None,
         EffectKind::Outline,
+        EffectKind::Chase,
+        EffectKind::Neon,
+        EffectKind::Sweep,
         EffectKind::Kaleidoscope,
         EffectKind::Tile,
         EffectKind::Scroll,
@@ -523,6 +529,9 @@ impl EffectKind {
             EffectKind::ColorCycle => t("Färgcykel", "Colour cycle"),
             EffectKind::Strobe => t("Blinka", "Strobe"),
             EffectKind::Outline => t("Konturglöd", "Edge glow"),
+            EffectKind::Chase => t("Jagande ljus", "Chasing lights"),
+            EffectKind::Neon => t("Neonram", "Neon frame"),
+            EffectKind::Sweep => t("Ljussvep", "Light sweep"),
         }
     }
 
@@ -540,6 +549,9 @@ impl EffectKind {
             EffectKind::ColorCycle => t("Färgerna vandrar runt färghjulet", "Colours travel around the colour wheel"),
             EffectKind::Strobe => t("Ytan blinkar i takt", "The surface flashes to the beat"),
             EffectKind::Outline => t("Bara kanterna lyser, med ett ljus som springer runt", "Only the edges glow, with a light running around"),
+            EffectKind::Chase => t("Ljuspunkter springer runt ytans kant – som en ljusslinga", "Dots of light run around the edge – like a light chain"),
+            EffectKind::Neon => t("En skarp lysande ram runt ytan som pulserar i takt", "A sharp glowing frame around the surface that pulses to the beat"),
+            EffectKind::Sweep => t("En ljusstrimma sveper över ytan i takt", "A bar of light sweeps across the surface to the beat"),
         }
     }
 }
@@ -1002,6 +1014,25 @@ mod tests {
             for s in &p.sources {
                 assert!(dir.join(s.kind.path().unwrap()).exists(), "{name}: {}", s.name);
             }
+        }
+    }
+
+    #[test]
+    fn geometry_project_uses_edge_effects() {
+        let p = Project::from_ron(include_str!("../../../examples/geometry.lmap")).unwrap();
+        assert_eq!(p.cues.len(), 4);
+        // Bara mönster och färger – inga filer.
+        assert!(p.sources.iter().all(|s| s.kind.path().is_none()));
+        for kind in [EffectKind::Chase, EffectKind::Neon, EffectKind::Sweep] {
+            assert!(p.surfaces.iter().any(|s| s.effect.kind == kind), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn effect_kinds_are_listed_once() {
+        for (i, a) in EffectKind::ALL.iter().enumerate() {
+            assert!(!EffectKind::ALL[i + 1..].contains(a), "{a:?}");
+            assert!(*a == EffectKind::None || !a.hint().is_empty(), "{a:?}");
         }
     }
 

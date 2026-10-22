@@ -16,9 +16,10 @@ pub struct Example {
 }
 
 /// Exemplen och deras namn, i den ordning de visas.
-fn example_names() -> [(&'static str, &'static str); 5] {
+fn example_names() -> [(&'static str, &'static str); 6] {
     [
         ("showcase", t("Översikt", "Showcase")),
+        ("geometry", t("Geometri", "Geometry")),
         ("facade", t("Fasad", "Façade")),
         ("halloween", "Halloween"),
         ("christmas", t("Jul", "Christmas")),
@@ -110,7 +111,10 @@ impl LumaApp {
                     ui.label(RichText::new(t("Prova ett exempel", "Try an example")).size(18.0).strong());
                     ui.add_space(10.0);
                     let gap = 14.0;
-                    let per_row = (((ui.available_width() + gap) / (CARD.x + gap)) as usize).clamp(1, examples.len());
+                    // Så många kort som ryms, men jämnt fördelade (3 + 3 hellre än 5 + 1).
+                    let fits = (((ui.available_width() + gap) / (CARD.x + gap)) as usize).clamp(1, examples.len());
+                    let rows = examples.len().div_ceil(fits);
+                    let per_row = examples.len().div_ceil(rows);
                     for chunk in examples.chunks(per_row) {
                         let width = chunk.len() as f32 * (CARD.x + gap) - gap;
                         ui.allocate_ui(egui::vec2(width, CARD.y + 30.0), |ui| {

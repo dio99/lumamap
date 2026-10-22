@@ -306,7 +306,7 @@ huvudtråden – exakt samma väg som musen.
 | **v0.4** | AppImage/Flatpak, NV12-shader, zero-copy, MIDI. | ✅ utom zero-copy (se nedan) |
 | **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
 | **v1.1 – UI/UX** | En "➕ Lägg till"-meny, dra media till ytor, levande miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy med exempel och senaste projekt, tydligare cue-lista (▶ nu, › nästa). | ✅ |
-| **v1.2** | Snäpp mot andra ytors hörn och kanter, kantljus-effekter (jagande ljus, kontur, neon-ram). | |
+| **v1.2** | Snäpp mot andra ytors hörn och kanter och bildens kant (Ctrl = fritt), kantljus-effekter (jagande ljus, neonram, ljussvep) och exemplet `geometry.lmap`. | ✅ |
 | **v1.3** | Fjärrkontroll i mobilen (webbsida + QR-kod), automatisk tidslinje för cues, schema (start/släck på klockslag). | |
 | **v1.4** | Klippgrid för live-byten (på nästa beat), LED-pixelmappning via Art-Net. | |
 | Senare | Rörelseinteraktivitet via webbkamera, ritläge för ljus, NDI-källor, kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |

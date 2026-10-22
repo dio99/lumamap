@@ -23,6 +23,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   projector windows render the same image, live.
 - **Surfaces:** quad (perspective-correct, no diagonal seam), triangle,
   ellipse and curved mesh for pillars and arches.
+- **Snapping:** corners snap to other surfaces and to the image edge, so
+  neighbouring surfaces meet without gaps.
 - **Masks** with soft edges – cut out a window or a door. Masks stay put on
   the wall when you adjust the surface.
 - **Align with a webcam:** the projector shows a few dots, the camera finds
@@ -35,9 +37,11 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   solid colours and **live patterns** drawn on the GPU – no video needed.
 - **21 ready-made loops** to use freely – space, fire, aurora, Christmas,
   Halloween, a collapsing brick façade and more (see [Examples](#examples)).
-- **Effects on any surface:** edge glow that follows the surface's shape,
-  kaleidoscope, tiles, scroll, rotate, pulse, colour cycle, strobe, blur,
-  invert – in time with a tempo you tap in.
+- **Effects on any surface:** edge lights that follow the surface's shape
+  (edge glow, chasing lights, neon frame, light sweep), kaleidoscope, tiles,
+  scroll, rotate, pulse, colour cycle, strobe, blur, invert – in time with a
+  tempo you tap in. Edge lights turn plain shapes into a geometric show with
+  no video at all.
 - **Sound-reactive:** effects can follow the bass from a microphone or from
   what the computer plays; the tempo is picked up from the music.
 - Crop, blend modes (normal, add, multiply, screen) and colour correction
@@ -108,7 +112,7 @@ The binary ends up in `target/release/lumamap`.
 LumaMap opens with a welcome screen: add a video, open a project, or click
 one of the examples to see how a finished show is built.
 
-![Welcome screen with the five example projects](docs/welcome.jpg)
+![Welcome screen with the six example projects](docs/welcome.jpg)
 
 1. Drag a video or image into the window. It appears on a new surface.
 2. Drag the surface's four corners until they fit the wall.
@@ -128,7 +132,9 @@ are on the welcome screen and under ☰ → **Recent**.
   Drag media onto a surface (in the list or in the preview) to show it there.
   Drag surfaces up and down to change which one is in front; 👁 hides one.
   Cues show their fade time, ▶ marks the running cue and › the next one.
-- **Middle – the projector preview.** Drag corners or whole surfaces.
+- **Middle – the projector preview.** Drag corners or whole surfaces. A
+  corner snaps to the corners and edges of other surfaces and to the edge of
+  the image (a yellow ring shows it); hold **Ctrl** to drag freely.
   **Right-click** a surface for a menu (media, shape, straighten, fill,
   front/back, duplicate, delete). **Scroll** to zoom in on a corner, drag
   with the **middle button** to pan, and click the 🔍 button to zoom out.
@@ -195,6 +201,7 @@ There are also greeting cards: `god-jul.jpg`, `merry-christmas.jpg`,
 | Project | |
 |---|---|
 | `examples/showcase.lmap` | Every surface type at once: fire on a triangle, space on a curved pillar, aurora in an ellipse, a masked plasma window, a neon floor |
+| `examples/geometry.lmap` | A geometric show without any video: a neon frame, a triangle of chasing lights, a tunnel pattern in a circle, two neon diamonds and a light sweep |
 | `examples/christmas.lmap` | Snow on the façade, lights along the eaves, Santa, a "God Jul" greeting with glitter |
 | `examples/halloween.lmap` | Bats and the moon, a pumpkin on the steps, ghosts, a skeleton in the door, eyes in the bushes |
 | `examples/facade.lmap` | The brick wall illusion over the whole house, with the silhouette film in two windows |
@@ -230,11 +237,14 @@ python3 examples/media/generate.py fire neon  # just some
 | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S | New / open / save / save as |
 | Scroll / middle-drag | Zoom / pan the preview |
 | Right-click | Menu for the surface under the mouse |
+| Ctrl while dragging | Don't snap to other surfaces |
 
 ## Effects and music
 
-Pick an **Effect** for a surface in its settings and set **Amount** and
-**Speed**. Speed is counted in beats of the tempo shown in the toolbar
+Pick an **Effect** for a surface in its **✨ Effect** tab and set **Amount**
+and **Speed**. The edge lights – **Edge glow**, **Chasing lights**, **Neon
+frame** – light up only the outline of the surface in the colours of its
+media, so a pattern or a plain colour is enough. Speed is counted in beats of the tempo shown in the toolbar
 (♩ 120) – press **Tap** in time with the music to set it.
 
 To make effects follow the music, choose 🎵 **Microphone** or **Computer

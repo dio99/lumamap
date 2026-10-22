@@ -170,6 +170,31 @@ fn edge_distance(p: vec2<f32>) -> f32 {
     return min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y));
 }
 
+// Läget runt ytans kant, 0..1 ett varv medurs från övre vänstra hörnet.
+fn perimeter(p: vec2<f32>) -> f32 {
+    if (u.res.z > 0.5 || u.effect.w > 0.5) {
+        return fract(atan2(p.y - 0.5, p.x - 0.5) / TAU + 0.75);
+    }
+    let d = vec4<f32>(p.y, 1.0 - p.x, 1.0 - p.y, p.x);
+    let m = min(min(d.x, d.y), min(d.z, d.w));
+    if (m == d.x) {
+        return p.x * 0.25;
+    }
+    if (m == d.y) {
+        return 0.25 + p.y * 0.25;
+    }
+    if (m == d.z) {
+        return 0.5 + (1.0 - p.x) * 0.25;
+    }
+    return 0.75 + (1.0 - p.y) * 0.25;
+}
+
+// Mediets färgton men alltid starkt lysande; där mediet är svart blir det vitt.
+fn bright_hue(rgb: vec3<f32>) -> vec3<f32> {
+    let peak = max(max(rgb.r, rgb.g), rgb.b);
+    return mix(vec3<f32>(1.0), rgb / max(peak, 0.001), smoothstep(0.02, 0.2, peak));
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let q2 = u.h2 * vec3<f32>(in.p, 1.0);
@@ -216,6 +241,37 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             let hue = mix(vec3<f32>(1.0), rgb / max(peak, 0.001), smoothstep(0.02, 0.2, peak));
             alpha *= clamp(glow * (0.55 + 0.9 * runner), 0.0, 1.0);
             rgb = min(mix(hue, vec3<f32>(1.0), runner * 0.5), vec3<f32>(1.0));
+        }
+        case 11u: {
+            // Jagande ljus: punkter i ett band längs kanten som springer runt.
+            let d = edge_distance(param);
+            let px = max(d, 0.0) / max(fwidth(d), 1e-6);
+            let width = 4.0 + amount * 36.0;
+            let band = 1.0 - smoothstep(width * 0.6, width, px);
+            let f = fract((perimeter(param) - phase) * 24.0);
+            let dot_ = 1.0 - smoothstep(0.12, 0.32, abs(f - 0.5));
+            alpha *= band * (0.12 + 0.88 * dot_);
+            rgb = mix(bright_hue(rgb), vec3<f32>(1.0), dot_ * 0.35);
+        }
+        case 12u: {
+            // Neonram: skarp linje vid kanten med mjukt sken inåt, pulserar i takt.
+            let d = edge_distance(param);
+            let px = max(d, 0.0) / max(fwidth(d), 1e-6);
+            let line = 2.0 + amount * 10.0;
+            let core = 1.0 - smoothstep(line, line + 1.5, px);
+            let glow = exp(-px / (6.0 + amount * 30.0));
+            let pulse = 0.8 + 0.2 * cos(phase * TAU);
+            alpha *= clamp(core + glow * 0.6, 0.0, 1.0) * pulse;
+            rgb = mix(bright_hue(rgb), vec3<f32>(1.0), core * 0.5);
+        }
+        case 13u: {
+            // Ljussvep: en ljusstrimma glider över mediet från vänster till höger.
+            let at = phase * 1.4 - 0.2;
+            let w = 0.03 + amount * 0.12;
+            let x = (param.x - at) / w;
+            let bar = exp(-x * x);
+            rgb = min(rgb + vec3<f32>(bar), vec3<f32>(1.0));
+            alpha = max(alpha, bar);
         }
         default: {}
     }

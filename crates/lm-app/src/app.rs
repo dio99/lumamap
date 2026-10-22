@@ -118,6 +118,8 @@ pub struct LumaApp {
     pub recent: Vec<PathBuf>,
     pub welcome_closed: bool,
     pub examples: Option<Vec<crate::welcome::Example>>,
+    /// Punkten ett drag just snäppte till (ritas som en ring).
+    pub snap_mark: Option<lm_core::Pt>,
 }
 
 impl LumaApp {
@@ -194,6 +196,7 @@ impl LumaApp {
             recent: load_recent(),
             welcome_closed: false,
             examples: None,
+            snap_mark: None,
         };
 
         match startup.file {

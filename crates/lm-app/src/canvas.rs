@@ -63,6 +63,9 @@ pub struct Drag {
 pub const ACCENT: Color32 = Color32::from_rgb(0, 190, 255);
 pub const MASK_COLOR: Color32 = Color32::from_rgb(255, 150, 40);
 const HANDLE_HIT: f32 = 14.0;
+/// Hur nära (i skärmpunkter) ett hörn måste vara för att snäppa.
+const SNAP_CORNER: f32 = 12.0;
+const SNAP_EDGE: f32 = 8.0;
 /// Antal linjesegment mellan två kontrollpunkter när meshkurvor ritas.
 const CURVE_STEPS: usize = 8;
 
@@ -253,13 +256,19 @@ impl LumaApp {
                             }
                         }
                     }
-                    let (id, g) = (d.surface, d.gesture);
+                    let (id, g, point) = (d.surface, d.gesture, d.point);
+                    // Snäpp mot andra ytor och bildens kant (Ctrl = dra fritt).
+                    self.snap_mark = None;
+                    if matches!(kind, PtKind::Dst(_)) && !ui.input(|i| i.modifiers.command) {
+                        self.snap(&v, kind, id, point, &mut pts);
+                    }
                     self.set_points(id, kind, pts, Some(g));
                 }
             }
         }
         if resp.drag_stopped() {
             self.drag = None;
+            self.snap_mark = None;
         }
 
         if let (PtKind::Mask(_), Some(pos)) = (kind, pointer) {
@@ -332,6 +341,11 @@ impl LumaApp {
             if e.bottom > 0.0 {
                 dash(egui::pos2(rect.min.x, y1), egui::pos2(rect.max.x, y1));
             }
+        }
+        if let (Some(m), true) = (self.snap_mark, self.drag.is_some()) {
+            let c = v.pt(m);
+            painter.circle_stroke(c, 11.0, Stroke::new(2.0, Color32::from_rgb(255, 220, 80)));
+            painter.circle_stroke(c, 15.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 220, 80, 120)));
         }
         let mut labels: Vec<Rect> = Vec::new();
         for id in self.canvas_surfaces(kind) {
@@ -413,6 +427,76 @@ impl LumaApp {
                     painter.circle(*p, r, fill, Stroke::new(2.0, if matches!(kind, PtKind::Mask(_)) { MASK_COLOR } else { ACCENT }));
                 } else {
                     painter.circle_filled(*p, 3.5, color);
+                }
+            }
+        }
+    }
+
+    /// Snäpper dragna punkter: ett hörn mot andra ytors hörn, deras kanter och
+    /// bildens kant; en hel yta så att något av dess hörn hamnar på ett hörn.
+    fn snap(&mut self, v: &View, kind: PtKind, id: SurfaceId, point: Option<usize>, pts: &mut [Pt]) {
+        let others: Vec<SurfaceId> = self.canvas_surfaces(kind).into_iter().filter(|o| *o != id).collect();
+        // Hörn att snäppa till: andra synliga ytors punkter och bildens hörn.
+        let mut corners: Vec<Pt> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        for o in &others {
+            if self.project.surface(*o).is_some_and(|s| s.visible) {
+                corners.extend_from_slice(self.points(*o, kind).unwrap_or_default());
+            }
+        }
+        let screen = |p: Pt| {
+            let q = v.pt(p);
+            [q.x, q.y]
+        };
+        let dist = |a: [f32; 2], b: [f32; 2]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+        match point {
+            Some(i) => {
+                let at = screen(pts[i]);
+                let best = corners
+                    .iter()
+                    .map(|c| (dist(screen(*c), at), *c))
+                    .filter(|(d, _)| *d <= SNAP_CORNER)
+                    .min_by(|a, b| a.0.total_cmp(&b.0));
+                if let Some((_, c)) = best {
+                    pts[i] = c;
+                    self.snap_mark = Some(c);
+                    return;
+                }
+                // Kanter: andra ytors konturer och bildens ram.
+                let mut edges: Vec<Vec<[f32; 2]>> = vec![[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]].iter().map(|p| screen(*p)).collect()];
+                for o in &others {
+                    if self.project.surface(*o).is_some_and(|s| s.visible) {
+                        edges.push(self.outline(*o, kind).iter().map(|p| screen(*p)).collect());
+                    }
+                }
+                let best = edges
+                    .iter()
+                    .filter_map(|e| lm_geom::nearest_edge(at, e, SNAP_EDGE))
+                    .map(|(_, q)| (dist(q, at), q))
+                    .min_by(|a, b| a.0.total_cmp(&b.0));
+                if let Some((_, q)) = best {
+                    let n = v.norm(egui::pos2(q[0], q[1]));
+                    pts[i] = n;
+                    self.snap_mark = Some(n);
+                }
+            }
+            None => {
+                let mut best: Option<(f32, Pt, Pt)> = None;
+                for p in pts.iter() {
+                    let at = screen(*p);
+                    for c in &corners {
+                        let d = dist(screen(*c), at);
+                        if d <= SNAP_CORNER && best.is_none_or(|b| d < b.0) {
+                            best = Some((d, *p, *c));
+                        }
+                    }
+                }
+                if let Some((_, from, to)) = best {
+                    let delta = [to[0] - from[0], to[1] - from[1]];
+                    for p in pts.iter_mut() {
+                        p[0] += delta[0];
+                        p[1] += delta[1];
+                    }
+                    self.snap_mark = Some(to);
                 }
             }
         }
