@@ -284,7 +284,9 @@ plays, so music from any player works without cables.
 surface (or use the selected one) and click a clip – or press **1–9** – to
 show it there, starting from the beginning. With **On the next beat** the
 change waits for the next beat of the tempo, so it lands in time with the
-music; the clip blinks yellow while it waits.
+music; the clip blinks yellow while it waits. **Crossfade** sets how long the
+old clip fades into the new one (0 = hard cut). Cues crossfade too when a
+surface changes media, over the cue's fade time.
 
 ## Phone remote
 
