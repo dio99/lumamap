@@ -611,7 +611,12 @@ pub enum Shape {
     /// En kon (strut, julgran) med spetsen uppåt, tre hörn som en triangel.
     /// Bilden lindas runt konen.
     Cone,
+    /// En ritad ljuslinje: `points` punkter längs en mjuk kurva, `width` pixlar bred.
+    Line { points: u32, width: u32 },
 }
+
+pub const LINE_MAX_POINTS: u32 = 64;
+pub const LINE_WIDTH_MAX: u32 = 400;
 
 pub const MESH_MIN: u32 = 2;
 pub const MESH_MAX: u32 = 16;
@@ -623,6 +628,7 @@ impl Shape {
             Shape::Quad | Shape::Ellipse | Shape::Sphere | Shape::Cylinder => 4,
             Shape::Triangle | Shape::Cone => 3,
             Shape::Mesh { cols, rows } => (cols * rows) as usize,
+            Shape::Line { points, .. } => points as usize,
         }
     }
 }
@@ -1164,7 +1170,8 @@ impl Project {
                 s.output = first;
             }
             // Trasig geometri (t.ex. handredigerad fil) blir en rak fyrhörning i stället för en krasch.
-            let bad_mesh = matches!(s.shape, Shape::Mesh { cols, rows } if !(MESH_MIN..=MESH_MAX).contains(&cols) || !(MESH_MIN..=MESH_MAX).contains(&rows));
+            let bad_mesh = matches!(s.shape, Shape::Mesh { cols, rows } if !(MESH_MIN..=MESH_MAX).contains(&cols) || !(MESH_MIN..=MESH_MAX).contains(&rows))
+                || matches!(s.shape, Shape::Line { points, width } if !(2..=LINE_MAX_POINTS).contains(&points) || !(1..=LINE_WIDTH_MAX).contains(&width));
             if bad_mesh || s.dst_pts.len() != s.shape.point_count() {
                 s.shape = Shape::Quad;
                 s.dst_pts = vec![[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]];

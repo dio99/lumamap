@@ -572,6 +572,23 @@ impl LumaApp {
 
     fn properties(&mut self, ui: &mut Ui) {
         ui.add_space(6.0);
+        if self.draw_mode {
+            egui::Frame::group(ui.style()).fill(Color32::from_rgb(20, 45, 60)).show(ui, |ui| {
+                ui.label(RichText::new(t("✏ Ritläge", "✏ Draw mode")).strong());
+                ui.label(RichText::new(t(
+                    "Dra med musen i bilden. Varje drag blir en ljuslinje med neonsken i markerat media (annars regnbåge).",
+                    "Drag with the mouse in the picture. Each stroke becomes a line of light with a neon glow in the selected media (otherwise a rainbow).",
+                )).size(12.0).color(Color32::from_gray(150)));
+                ui.horizontal(|ui| {
+                    ui.label(t("Bredd", "Width"));
+                    ui.add(egui::DragValue::new(&mut self.draw_width).range(1..=lm_core::LINE_WIDTH_MAX).suffix(" px"));
+                    if ui.button(t("✔ Klar", "✔ Done")).on_hover_text("Esc").clicked() {
+                        self.draw_mode = false;
+                    }
+                });
+            });
+            ui.add_space(6.0);
+        }
         let Some(mut s) = self.selected.and_then(|id| self.project.surface(id).cloned()) else {
             self.output_properties(ui);
             ui.add_space(14.0);
@@ -726,6 +743,12 @@ impl LumaApp {
                         }
                     }
                 });
+                if let Shape::Line { points, width } = &mut shape {
+                    ui.add(egui::DragValue::new(width).range(1..=lm_core::LINE_WIDTH_MAX).suffix(" px"))
+                        .on_hover_text(t("Linjens bredd i projektorpixlar", "The line's width in projector pixels"));
+                    ui.add(egui::DragValue::new(points).range(2..=lm_core::LINE_MAX_POINTS).suffix(t(" p", " pt")))
+                        .on_hover_text(t("Antal punkter att dra i", "Number of points to drag"));
+                }
                 if let Shape::Mesh { cols, rows } = &mut shape {
                     ui.add(egui::DragValue::new(cols).range(MESH_MIN..=MESH_MAX).suffix(t(" kol", " col")))
                         .on_hover_text(t("Antal punkter på bredden", "Number of points across"));
@@ -1381,7 +1404,7 @@ impl LumaApp {
     }
 }
 
-pub(crate) const SHAPES: [Shape; 7] = [
+pub(crate) const SHAPES: [Shape; 8] = [
     Shape::Quad,
     Shape::Triangle,
     Shape::Ellipse,
@@ -1389,6 +1412,7 @@ pub(crate) const SHAPES: [Shape; 7] = [
     Shape::Sphere,
     Shape::Cylinder,
     Shape::Cone,
+    Shape::Line { points: 2, width: 16 },
 ];
 
 pub(crate) fn shape_label(shape: Shape) -> &'static str {
@@ -1399,6 +1423,7 @@ pub(crate) fn shape_label(shape: Shape) -> &'static str {
         Shape::Sphere => t("Klot (boll)", "Sphere (ball)"),
         Shape::Cylinder => t("Cylinder (pelare)", "Cylinder (pillar)"),
         Shape::Cone => t("Kon", "Cone"),
+        Shape::Line { .. } => t("Linje", "Line"),
         Shape::Mesh { .. } => t("Mesh", "Mesh"),
     }
 }
@@ -1422,6 +1447,7 @@ pub(crate) fn shape_hint(shape: Shape) -> &'static str {
         Shape::Sphere => t("En boll: dra hörnen runt bollen, bilden lindas runt den", "A ball: drag the corners around the ball, the image wraps around it"),
         Shape::Cylinder => t("En rund pelare eller tunna: bilden följer rundningen", "A round pillar or barrel: the image follows the curve"),
         Shape::Cone => t("En kon eller julgran med spetsen uppåt: bilden lindas runt den", "A cone or Christmas tree, tip up: the image wraps around it"),
+        Shape::Line { .. } => t("En ljuslinje längs en mjuk kurva – rita den med ✏ Rita linje", "A line of light along a smooth curve – draw it with ✏ Draw line"),
         Shape::Mesh { .. } => t("Rutnät av punkter för böjda ytor, t.ex. pelare", "Grid of points for curved surfaces, e.g. pillars"),
     }
 }
@@ -1460,6 +1486,11 @@ pub(crate) fn shape_points(shape: Shape, quad: &[Pt; 4]) -> Vec<Pt> {
         Shape::Quad | Shape::Ellipse | Shape::Sphere | Shape::Cylinder => quad.to_vec(),
         Shape::Triangle | Shape::Cone => lm_geom::triangle_from_quad(quad).to_vec(),
         Shape::Mesh { cols, rows } => lm_geom::mesh_from_quad(quad, cols as usize, rows as usize),
+        // En rak linje genom fyrhörningens mitt.
+        Shape::Line { points, .. } => {
+            let mid = |a: Pt, b: Pt| [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+            lm_geom::line::resample(&[mid(quad[0], quad[3]), mid(quad[1], quad[2])], points.max(2) as usize)
+        }
     }
 }
 
@@ -1472,6 +1503,15 @@ fn surface_quad(s: &Surface) -> Option<[Pt; 4]> {
             let (c, r) = (cols as usize, rows as usize);
             let p = &s.dst_pts;
             Some([p[0], p[c - 1], p[c * r - 1], p[c * (r - 1)]])
+        }
+        // Linjens omslutande rektangel (lite höjd även för en rak linje).
+        Shape::Line { .. } => {
+            let xs = s.dst_pts.iter().map(|p| p[0]);
+            let ys = s.dst_pts.iter().map(|p| p[1]);
+            let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+            let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+            let (cy, hy) = ((y0 + y1) * 0.5, ((y1 - y0) * 0.5).max(0.05));
+            Some([[x0, cy - hy], [x1, cy - hy], [x1, cy + hy], [x0, cy + hy]])
         }
     }
 }
@@ -1486,6 +1526,9 @@ pub(crate) fn reshape(s: &mut Surface, to: Shape) {
         (Shape::Mesh { cols, rows }, Shape::Mesh { cols: nc, rows: nr }) => {
             lm_geom::mesh_grid(&s.dst_pts, cols as usize, rows as usize, nc as usize, nr as usize)
         }
+        // Samma linje: bara bredden eller antalet punkter ändras.
+        (Shape::Line { points, .. }, Shape::Line { points: np, .. }) if points == np => s.dst_pts.clone(),
+        (Shape::Line { .. }, Shape::Line { points: np, .. }) => lm_geom::line::resample(&lm_geom::line::smooth(&s.dst_pts, 8), np as usize),
         _ => match surface_quad(s) {
             Some(q) => shape_points(to, &q),
             None => return,
@@ -1512,7 +1555,8 @@ mod tests {
     #[test]
     fn every_shape_roundtrips_through_quad() {
         let corners = vec![[0.1, 0.2], [0.8, 0.2], [0.9, 0.9], [0.2, 0.9]];
-        for shape in SHAPES {
+        // En linje har inga hörn att behålla (testas för sig).
+        for shape in SHAPES.into_iter().filter(|s| !matches!(s, Shape::Line { .. })) {
             let mut s = surface(corners.clone());
             reshape(&mut s, shape);
             assert_eq!(s.dst_pts.len(), shape.point_count(), "{shape:?}");
@@ -1521,6 +1565,22 @@ mod tests {
                 assert!(close(*a, *b), "{shape:?}: {a:?} != {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn quad_becomes_a_line_through_its_middle() {
+        let mut s = surface(vec![[0.1, 0.2], [0.9, 0.2], [0.9, 0.6], [0.1, 0.6]]);
+        reshape(&mut s, Shape::Line { points: 3, width: 10 });
+        assert_eq!(s.dst_pts.len(), 3);
+        assert!(close(s.dst_pts[0], [0.1, 0.4]) && close(s.dst_pts[1], [0.5, 0.4]) && close(s.dst_pts[2], [0.9, 0.4]));
+        // Fler punkter längs samma linje.
+        reshape(&mut s, Shape::Line { points: 5, width: 10 });
+        assert_eq!(s.dst_pts.len(), 5);
+        assert!(close(s.dst_pts[4], [0.9, 0.4]));
+        // Bara bredden ändras: punkterna står kvar.
+        let before = s.dst_pts.clone();
+        reshape(&mut s, Shape::Line { points: 5, width: 30 });
+        assert_eq!(s.dst_pts, before);
     }
 
     #[test]

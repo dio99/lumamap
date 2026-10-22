@@ -1,6 +1,7 @@
 //! Geometri för mappning: homografi (perspektivtransform) och träfftest.
 
 pub mod calibrate;
+pub mod line;
 
 pub type Pt = [f32; 2];
 

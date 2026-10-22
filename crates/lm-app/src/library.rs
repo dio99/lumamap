@@ -387,6 +387,14 @@ impl LumaApp {
                 self.add_shaped(src, shape);
             }
         }
+        ui.separator();
+        if ui
+            .button(t("✏ Rita linje   D", "✏ Draw line   D"))
+            .on_hover_text(t("Rita ljuslinjer med musen direkt i bilden", "Draw lines of light with the mouse, right in the picture"))
+            .clicked()
+        {
+            self.draw_mode = true;
+        }
     }
 
     /// Högerklicksmenyn för en yta – samma i ytlistan och i bilden.

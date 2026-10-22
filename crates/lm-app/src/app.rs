@@ -151,6 +151,10 @@ pub struct LumaApp {
     /// Övertoningstid för klippbyten i Live-fönstret.
     pub live_fade: f32,
     pub motion_window_open: bool,
+    /// Ritläget för ljuslinjer.
+    pub draw_mode: bool,
+    pub draw_points: Vec<lm_core::Pt>,
+    pub draw_width: u32,
     pub motion_high: bool,
     pub motion_fired: Option<Instant>,
 }
@@ -253,6 +257,9 @@ impl LumaApp {
             media_fades: HashMap::new(),
             live_fade: 0.5,
             motion_window_open: false,
+            draw_mode: false,
+            draw_points: Vec::new(),
+            draw_width: 16,
             motion_high: false,
             motion_fired: None,
         };
@@ -769,6 +776,15 @@ impl LumaApp {
         });
         if ui.input(|i| i.key_pressed(Key::Enter)) {
             self.go_next_cue(1);
+        }
+        // D = rita linje, Esc avslutar ritläget.
+        if ui.input(|i| i.key_pressed(Key::D)) && !self.show_mode {
+            self.draw_mode = !self.draw_mode;
+            self.draw_points.clear();
+        }
+        if self.draw_mode && ui.input(|i| i.key_pressed(Key::Escape)) {
+            self.draw_mode = false;
+            self.draw_points.clear();
         }
         if tab {
             self.show_mode = !self.show_mode;

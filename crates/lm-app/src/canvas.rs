@@ -163,6 +163,14 @@ impl LumaApp {
     /// Ytans kontur (normaliserad). För mesh och ellips följer den kurvorna.
     pub fn outline(&self, id: SurfaceId, kind: PtKind) -> Vec<Pt> {
         let pts = self.points(id, kind).unwrap_or_default();
+        // Linje: bandet runt den mjuka kurvan.
+        if let (PtKind::Dst(out), Some(Shape::Line { width, .. })) = (kind, self.project.surface(id).map(|s| s.shape)) {
+            let res = self.project.output(out).map_or([1920, 1080], |o| o.resolution);
+            // Minst 12 px brett att ta i med musen.
+            let w = width.max(12) as f32 * 0.5;
+            let half = [w / res[0].max(1) as f32, w / res[1].max(1) as f32];
+            return lm_geom::line::ribbon_outline(&lm_geom::line::smooth(pts, 8), half);
+        }
         if let Some((c, r)) = self.mesh_size(id, kind) {
             return lm_geom::mesh_outline(pts, c, r, CURVE_STEPS);
         }
@@ -219,6 +227,13 @@ impl LumaApp {
         let v = self.view(rect, kind);
         let resp = ui.interact(rect, ui.id().with(("canvas", salt)), Sense::click_and_drag());
         let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
+
+        // Ritläget: dra med musen för att rita en ljuslinje.
+        if let (true, PtKind::Dst(out)) = (self.draw_mode, kind) {
+            self.draw_canvas(ui, &resp, &v, rect, out, pointer);
+            self.paint_overlay(ui, rect, kind);
+            return;
+        }
 
         // LED-slingornas ändar går före ytorna när ljusfönstret är öppet.
         if let PtKind::Dst(out) = kind {
@@ -468,7 +483,8 @@ impl LumaApp {
                 // Ramen som ellipsen är inskriven i.
                 painter.add(egui::Shape::closed_line(pts.clone(), Stroke::new(1.0, color.gamma_multiply(0.4))));
             }
-            if selected && mesh.is_none() && !ellipse && !matches!(kind, PtKind::Mask(_)) {
+            let line = matches!(s.shape, Shape::Line { .. }) && matches!(kind, PtKind::Dst(_));
+            if selected && mesh.is_none() && !ellipse && !line && !matches!(kind, PtKind::Mask(_)) {
                 painter.add(egui::Shape::convex_polygon(
                     pts.clone(),
                     Color32::from_rgba_unmultiplied(0, 190, 255, 18),
@@ -532,6 +548,77 @@ impl LumaApp {
             painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(0, 190, 255, 25));
             painter.rect_stroke(r, 0.0, Stroke::new(1.0, ACCENT), egui::StrokeKind::Inside);
         }
+    }
+
+    fn draw_canvas(&mut self, ui: &mut Ui, resp: &egui::Response, v: &View, rect: Rect, out: OutputId, pointer: Option<Pos2>) {
+        ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+        if resp.drag_started() {
+            self.draw_points.clear();
+            if let Some(o) = ui.input(|i| i.pointer.press_origin()).or(pointer) {
+                self.draw_points.push(v.norm(o));
+            }
+        }
+        if let (true, Some(pos)) = (resp.dragged(), pointer) {
+            let far = self.draw_points.last().is_none_or(|l| v.pt(*l).distance(pos) > 2.0);
+            if far {
+                self.draw_points.push(v.norm(pos));
+            }
+        }
+        if resp.drag_stopped() {
+            let pts = std::mem::take(&mut self.draw_points);
+            self.finish_line(out, pts, rect.width());
+        }
+        let painter = ui.painter_at(rect);
+        if self.draw_points.len() > 1 {
+            let line: Vec<Pos2> = self.draw_points.iter().map(|p| v.pt(*p)).collect();
+            painter.add(egui::Shape::line(line, Stroke::new(3.0, ACCENT)));
+        }
+        painter.text(
+            rect.center_top() + egui::vec2(0.0, 14.0),
+            egui::Align2::CENTER_TOP,
+            t("✏ Ritläge: dra med musen för att rita en ljuslinje  •  Esc avslutar", "✏ Draw mode: drag with the mouse to draw a line of light  •  Esc to finish"),
+            egui::FontId::proportional(16.0),
+            ACCENT,
+        );
+    }
+
+    /// Gör det ritade till en linjeyta: förenklad, med neonsken och mediet
+    /// som är valt (eller ett regnbågsmönster).
+    fn finish_line(&mut self, out: OutputId, pts: Vec<Pt>, view_width: f32) {
+        if pts.len() < 2 {
+            return;
+        }
+        // Förenkla med ungefär 4 skärmpunkter som tolerans; kurvan jämnas ut ändå.
+        let tol = 4.0 / view_width.max(1.0);
+        let mut simple = lm_geom::line::simplify(&pts, tol);
+        if simple.len() > lm_core::LINE_MAX_POINTS as usize {
+            simple = lm_geom::line::resample(&simple, lm_core::LINE_MAX_POINTS as usize);
+        }
+        if simple.len() < 2 {
+            return;
+        }
+        let source = match self.selected_source.filter(|id| self.project.source(*id).is_some()) {
+            Some(id) => id,
+            None => {
+                let pattern = lm_core::Pattern::Gradient;
+                let src = self.project.make_source(t("Regnbåge", "Rainbow"), lm_core::SourceKind::Generator { pattern, colors: pattern.default_colors(), speed: 0.25 });
+                let id = src.id;
+                let index = self.project.sources.len();
+                self.exec(Command::AddSource { source: src, index }, None);
+                self.selected_source = Some(id);
+                id
+            }
+        };
+        let mut s = self.project.make_quad(Some(source), out);
+        s.name = format!("{} {}", t("Linje", "Line"), self.project.surfaces.iter().filter(|s| matches!(s.shape, Shape::Line { .. })).count() + 1);
+        s.shape = Shape::Line { points: simple.len() as u32, width: self.draw_width };
+        s.dst_pts = simple;
+        s.effect = lm_core::Effect { kind: lm_core::EffectKind::Neon, amount: 0.4, speed: 0.5, ..Default::default() };
+        let id = s.id;
+        let index = self.project.surfaces.len();
+        self.exec(Command::AddSurface { surface: s, index }, None);
+        self.selected = Some(id);
+        self.group = [id].into_iter().collect();
     }
 
     /// Snäpper dragna punkter: ett hörn mot andra ytors hörn, deras kanter och

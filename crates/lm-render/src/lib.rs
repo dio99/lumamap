@@ -19,10 +19,12 @@ mod yuv;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MSAA: u32 = 4;
-/// `res.z` i ytans uniform: 1 = ellips, 2 = klot, 3 = cylinder, 4 = kon.
+/// `res.z` i ytans uniform: 1 = ellips, 2 = klot, 3 = cylinder, 4 = kon, 5 = linje.
 const ROUND_SPHERE: f32 = 2.0;
 const ROUND_CYLINDER: f32 = 3.0;
 const ROUND_CONE: f32 = 4.0;
+/// Ritad linje: neonskenet lyser i mitten i stället för i kanterna.
+const ROUND_LINE: f32 = 5.0;
 /// Upplösning för mönsterkällor.
 const GENERATOR_SIZE: [u32; 2] = [1280, 720];
 const UNIFORM_SIZE: u64 = 48 + 48 + 16 + 16 + 16 + 16 + 16 * 16;
@@ -486,7 +488,7 @@ impl Renderer {
                     layers.push((tex.map_or(Tex::Test, Tex::Source), fade.map_or(1.0, |f| f.1)));
                 }
                 for (tex, k) in layers {
-                    let Some(mut geo) = surface_geometry(s, test, warp) else { continue };
+                    let Some(mut geo) = surface_geometry(s, test, warp, out.resolution) else { continue };
                     apply_mask(&mut geo.0, s.mask.as_ref(), out.resolution, warp);
                     geo.0.params[0] *= opts.master.clamp(0.0, 1.0) * k.clamp(0.0, 1.0);
                     let c = &s.color;
@@ -667,7 +669,7 @@ fn apply_mask(u: &mut SurfaceUniform, mask: Option<&Mask>, resolution: [u32; 2],
 
 /// Uniform och trianglar för en yta. `test` = visa testbilden över hela ytan.
 /// `warp`: utgångens keystone (enhetskvadrat → hörn), eller `None`.
-fn surface_geometry(s: &Surface, test: bool, warp: Option<&Homography>) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+fn surface_geometry(s: &Surface, test: bool, warp: Option<&Homography>, res: [u32; 2]) -> Option<(SurfaceUniform, Vec<Vertex>)> {
     let src = if test { UNIT_QUAD } else { lm_geom::quad(&s.src_pts)? };
     match s.shape {
         Shape::Quad => quad_geometry(&lm_geom::quad(&s.dst_pts)?, &src, s.opacity, false, warp),
@@ -684,7 +686,33 @@ fn surface_geometry(s: &Surface, test: bool, warp: Option<&Homography>) -> Optio
             Some(g)
         }
         Shape::Mesh { cols, rows } => mesh_geometry(&s.dst_pts, cols as usize, rows as usize, &src, s.opacity, warp),
+        Shape::Line { width, .. } => {
+            let mut g = line_geometry(&s.dst_pts, width, res, &src, s.opacity, warp)?;
+            g.0.res[2] = ROUND_LINE;
+            Some(g)
+        }
     }
+}
+
+/// Ritad linje: ett band längs en mjuk kurva. Ytans koordinater går längs
+/// linjen (x) och tvärs över (y), så media och kantljus följer linjen.
+fn line_geometry(pts: &[[f32; 2]], width: u32, res: [u32; 2], src: &[[f32; 2]; 4], opacity: f32, warp: Option<&Homography>) -> Option<(SurfaceUniform, Vec<Vertex>)> {
+    if pts.len() < 2 {
+        return None;
+    }
+    let h = Homography::from_points(&UNIT_QUAD, src)?;
+    let half = [width as f32 * 0.5 / res[0].max(1) as f32, width as f32 * 0.5 / res[1].max(1) as f32];
+    let ribbon = lm_geom::line::ribbon(&lm_geom::line::smooth(pts, 8), half);
+    let mut out = Vec::with_capacity(ribbon.len() * 6);
+    for w in ribbon.windows(2) {
+        let v = |p: [f32; 2], s: f32, across: f32| {
+            let p = warp_pt(warp, p);
+            [p[0], p[1], s, across]
+        };
+        let (a, b, c, d) = (v(w[0].0, w[0].2, 0.0), v(w[1].0, w[1].2, 0.0), v(w[1].1, w[1].2, 1.0), v(w[0].1, w[0].2, 1.0));
+        out.extend([a, b, c, a, c, d]);
+    }
+    Some((surface_uniform(Homography::IDENTITY, h, opacity), out))
 }
 
 /// Punkten genom keystone-förvrängningen.

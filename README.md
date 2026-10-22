@@ -24,7 +24,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - **Surfaces:** quad (perspective-correct, no diagonal seam), triangle,
   ellipse and curved mesh for arches – and **3D objects**: a sphere (ball),
   a cylinder (round pillar, barrel) and a cone (Christmas tree), where the
-  image wraps around the object instead of looking stretched.
+  image wraps around the object instead of looking stretched – plus **lines
+  of light** you draw with the mouse.
 - **Snapping:** corners snap to other surfaces and to the image edge, so
   neighbouring surfaces meet without gaps.
 - **Select several surfaces** and move them together – handy for a façade
@@ -167,6 +168,13 @@ with camera…** and **Start**. The projector shows nine dots one at a time
 (about ten seconds); then click the wall's four corners in the camera picture
 and the surface lands exactly there. Works best in a darkish room.
 
+**Drawing lines of light:** **⬜ New surface → ✏ Draw line** (or press **D**)
+and drag with the mouse in the preview. Each stroke becomes a smooth line of
+light – a glowing neon tube in the selected media's colours (a rainbow if
+nothing is selected). Set the width before you draw; afterwards the line's
+points can be dragged like any corner, and its width and effect changed in
+the **Surface** and **Effect** tabs. **Esc** finishes.
+
 **Balls, pillars and cones:** pick **Sphere**, **Cylinder** or **Cone** as
 the shape (under **⬜ New surface** or in the **Surface** tab). Drag the four
 corners to the edges of the ball or pillar (for a cone: the tip and the two
@@ -264,6 +272,7 @@ python3 examples/media/generate.py fire neon  # just some
 | Ctrl while dragging | Don't snap to other surfaces |
 | Shift-click / Shift-drag | Select several surfaces (Shift-drag draws a box) |
 | Ctrl+A | Select every surface on the output |
+| D / Esc | Start / finish drawing lines of light |
 | 1–9 | Switch to clip 1–9 (when ⚡ Live is open) |
 
 ## Effects and music

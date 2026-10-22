@@ -16,7 +16,7 @@ struct SurfaceUniform {
     h2: mat3x3<f32>,
     // x = opacitet, y = antal maskpunkter (0 = ingen mask), z = mjuk kant (px), w = 1 om inverterad
     params: vec4<f32>,
-    // xy = utgångens upplösning i pixlar, z = form (1 ellips, 2 klot, 3 cylinder, 4 kon), w = nyansvridning (radianer)
+    // xy = utgångens upplösning i pixlar, z = form (1 ellips, 2 klot, 3 cylinder, 4 kon, 5 linje), w = nyansvridning (radianer)
     res: vec4<f32>,
     // Färgjustering: x = ljusstyrka, y = kontrast, z = gamma, w = mättnad
     color: vec4<f32>,
@@ -297,6 +297,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             rgb = mix(bright_hue(rgb), vec3<f32>(1.0), dot_ * 0.35);
         }
         case 12u: {
+            if (shape_mode() == 5u) {
+                // Ritad linje: ett lysrör – vit kärna i mitten, sken ut mot kanterna.
+                let across = abs(param.y - 0.5) * 2.0;
+                let core = 1.0 - smoothstep(0.1 + amount * 0.25, 0.35 + amount * 0.3, across);
+                let glow = exp(-across * across * 3.0);
+                let pulse = 0.8 + 0.2 * cos(phase * TAU);
+                alpha *= clamp(core + glow * 0.7, 0.0, 1.0) * pulse;
+                rgb = mix(bright_hue(rgb), vec3<f32>(1.0), core * 0.6);
+                break;
+            }
             // Neonram: skarp linje vid kanten med mjukt sken inåt, pulserar i takt.
             let d = edge_distance(param);
             let px = max(d, 0.0) / max(fwidth(d), 1e-6);
