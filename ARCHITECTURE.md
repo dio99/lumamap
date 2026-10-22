@@ -301,7 +301,11 @@ huvudtråden – exakt samma väg som musen.
 | **v0.3** | Edge blending, OSC, cue-lista, kamera- och strömkällor, `--play`-läge. | ✅ |
 | **v0.4** | AppImage/Flatpak, NV12-shader, zero-copy, MIDI. | ✅ utom zero-copy (se nedan) |
 | **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
-| Senare | Kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
+| **v1.1 – UI/UX** | En "＋ Lägg till"-meny, dra-och-släpp av filer, miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy, grupperat verktygsfält med tooltips, tydligare cue-lista. | |
+| **v1.2** | Snäpp mot andra ytors hörn och kanter, kantljus-effekter (jagande ljus, kontur, neon-ram). | |
+| **v1.3** | Fjärrkontroll i mobilen (webbsida + QR-kod), automatisk tidslinje för cues, schema (start/släck på klockslag). | |
+| **v1.4** | Klippgrid för live-byten (på nästa beat), LED-pixelmappning via Art-Net. | |
+| Senare | Rörelseinteraktivitet via webbkamera, ritläge för ljus, NDI-källor, kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
 
 Utöver planen har också tillkommit: färgjustering per yta, keystone per
 utgång, uppspelningshastighet, svartnivåkompensation, "Samla projekt",
