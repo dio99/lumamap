@@ -38,6 +38,9 @@ pub struct LumaApp {
 
     pub selected: Option<SurfaceId>,
     pub selected_point: Option<usize>,
+    /// Alla markerade ytor (med `selected` som den som visas i egenskaperna).
+    pub group: HashSet<SurfaceId>,
+    pub band: Option<crate::canvas::Band>,
     pub selected_source: Option<lm_core::SourceId>,
     pub drag: Option<Drag>,
     /// Vyerna redigerar markerad ytas mask i stället för ytorna.
@@ -167,6 +170,8 @@ impl LumaApp {
             opts: RenderOptions::default(),
             selected: None,
             selected_point: None,
+            group: HashSet::new(),
+            band: None,
             selected_source: None,
             drag: None,
             mask_edit: false,
@@ -301,6 +306,42 @@ impl LumaApp {
     }
 
     pub fn select(&mut self, id: Option<SurfaceId>) {
+        self.group.clear();
+        self.group.extend(id);
+        self.select_keep_group_opt(id);
+    }
+
+    /// Gör `id` till den visade ytan utan att ändra övriga markeringen.
+    pub fn select_keep_group(&mut self, id: SurfaceId) {
+        self.group.insert(id);
+        self.select_keep_group_opt(Some(id));
+    }
+
+    /// Shift-klick: lägger till ytan i markeringen, eller tar bort den.
+    pub fn toggle_in_group(&mut self, id: SurfaceId) {
+        if self.group.contains(&id) && self.group.len() > 1 {
+            self.group.remove(&id);
+            if self.selected == Some(id) {
+                let next = self.group.iter().next().copied();
+                self.select_keep_group_opt(next);
+            }
+        } else {
+            if self.selected.is_none() {
+                self.group.clear();
+            }
+            self.select_keep_group(id);
+        }
+    }
+
+    /// Markerar alla synliga ytor på vald utgång.
+    pub fn select_all(&mut self) {
+        let ids: Vec<SurfaceId> = self.project.surfaces.iter().filter(|s| s.output == self.current_output).map(|s| s.id).collect();
+        self.group = ids.iter().copied().collect();
+        let first = self.selected.filter(|s| self.group.contains(s)).or(ids.last().copied());
+        self.select_keep_group_opt(first);
+    }
+
+    fn select_keep_group_opt(&mut self, id: Option<SurfaceId>) {
         if self.selected != id {
             self.selected_point = None;
             self.mask_edit = false;
@@ -337,10 +378,14 @@ impl LumaApp {
     }
 
     pub fn remove_selected(&mut self) {
-        if let Some(id) = self.selected.take() {
-            self.exec(Command::RemoveSurface(id), None);
-            self.opts.test_surfaces.remove(&id);
+        let Some(id) = self.selected.take() else { return };
+        let mut ids: Vec<SurfaceId> = self.group.drain().filter(|g| *g != id).collect();
+        ids.push(id);
+        let cmds: Vec<Command> = ids.iter().filter(|i| self.project.surface(**i).is_some()).map(|i| Command::RemoveSurface(*i)).collect();
+        for i in &ids {
+            self.opts.test_surfaces.remove(i);
         }
+        self.exec(Command::Batch(cmds), None);
     }
 
     /// Lägger till mediefiler. Släpps de på en yta får ytan filen,
@@ -503,6 +548,8 @@ impl LumaApp {
         self.path = path;
         self.selected = None;
         self.selected_point = None;
+        self.group.clear();
+        self.band = None;
         self.selected_source = None;
         self.drag = None;
         self.mask_edit = false;
@@ -653,8 +700,9 @@ impl LumaApp {
         let typing = ui.ctx().egui_wants_keyboard_input();
         let cmd = |k| KeyboardShortcut::new(Modifiers::COMMAND, k);
         let cmd_shift = |k| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, k);
-        let (undo, redo, redo2, save, save_as, open, new) = ui.input_mut(|i| {
+        let (all, undo, redo, redo2, save, save_as, open, new) = ui.input_mut(|i| {
             (
+                !typing && i.consume_shortcut(&cmd(Key::A)),
                 i.consume_shortcut(&cmd(Key::Z)),
                 i.consume_shortcut(&cmd_shift(Key::Z)),
                 i.consume_shortcut(&cmd(Key::Y)),
@@ -664,6 +712,9 @@ impl LumaApp {
                 i.consume_shortcut(&cmd(Key::N)),
             )
         });
+        if all {
+            self.select_all();
+        }
         if undo && !typing {
             self.undo();
         }
@@ -757,6 +808,25 @@ impl LumaApp {
             (PtKind::Mask(_), Some(m)) => m.points.clone(),
             _ => s.dst_pts.clone(),
         };
+        // Hela markeringen flyttas när inget hörn är valt.
+        if self.selected_point.is_none() && self.group.len() > 1 && matches!(kind, PtKind::Dst(_)) {
+            let cmds: Vec<Command> = self
+                .group
+                .iter()
+                .filter_map(|g| self.project.surface(*g))
+                .filter(|s| !s.locked)
+                .map(|s| {
+                    let mut s = s.clone();
+                    for p in &mut s.dst_pts {
+                        p[0] += d[0];
+                        p[1] += d[1];
+                    }
+                    Command::ReplaceSurface(s)
+                })
+                .collect();
+            self.exec(Command::Batch(cmds), None);
+            return;
+        }
         for (i, p) in pts.iter_mut().enumerate() {
             if self.selected_point.is_none_or(|sp| sp == i) {
                 p[0] += d[0];

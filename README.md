@@ -27,6 +27,8 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
   image wraps around the object instead of looking stretched.
 - **Snapping:** corners snap to other surfaces and to the image edge, so
   neighbouring surfaces meet without gaps.
+- **Select several surfaces** and move them together – handy for a façade
+  full of windows.
 - **Masks** with soft edges – cut out a window or a door. Masks stay put on
   the wall when you adjust the surface.
 - **Align with a webcam:** the projector shows a few dots, the camera finds
@@ -144,6 +146,10 @@ are on the welcome screen and under ☰ → **Recent**.
 - **Middle – the projector preview.** Drag corners or whole surfaces. A
   corner snaps to the corners and edges of other surfaces and to the edge of
   the image (a yellow ring shows it); hold **Ctrl** to drag freely.
+  **Shift-click** surfaces (in the preview or the list) or **Shift-drag** a
+  box around them to select several; drag one of them, or use the arrow
+  keys, and they all move together. The right side then also offers show,
+  hide, lock, give them all the same media, and delete.
   **Right-click** a surface for a menu (media, shape, straighten, fill,
   front/back, duplicate, delete). **Scroll** to zoom in on a corner, drag
   with the **middle button** to pan, and click the 🔍 button to zoom out.
@@ -254,6 +260,8 @@ python3 examples/media/generate.py fire neon  # just some
 | Scroll / middle-drag | Zoom / pan the preview |
 | Right-click | Menu for the surface under the mouse |
 | Ctrl while dragging | Don't snap to other surfaces |
+| Shift-click / Shift-drag | Select several surfaces (Shift-drag draws a box) |
+| Ctrl+A | Select every surface on the output |
 | 1–9 | Switch to clip 1–9 (when ⚡ Live is open) |
 
 ## Effects and music

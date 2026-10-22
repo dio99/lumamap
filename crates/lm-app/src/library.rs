@@ -288,11 +288,12 @@ impl LumaApp {
         if on_output.is_empty() {
             ui.label(RichText::new(t("Inga ytor här än. Klicka ➕ Ny.", "No surfaces here yet. Click ➕ New.")).color(DIM));
         } else {
-            ui.label(RichText::new(t("Överst = längst fram · dra för att flytta", "Top = in front · drag to reorder")).size(12.0).color(DIM));
+            ui.label(RichText::new(t("Överst = fram · Shift = flera", "Top = front · Shift = several")).size(12.0).color(DIM));
         }
         let ctx = ui.ctx().clone();
         let mut action: Option<Command> = None;
         let mut select = None;
+        let mut toggle = None;
         for &index in on_output.iter().rev() {
             let s = self.project.surfaces[index].clone();
             let lock = if s.locked { " 🔒" } else { "" };
@@ -306,7 +307,8 @@ impl LumaApp {
             }
             let thumb = s.source.and_then(|id| self.renderer.source_texture(id));
             let icon = s.source.and_then(|id| self.project.source(id)).map_or("—", |src| source_icon(&src.kind));
-            let resp = row(ui, Id::new(("surface_row", s.id)), self.selected == Some(s.id), 24.0, thumb, icon, text);
+            let marked = self.selected == Some(s.id) || self.group.contains(&s.id);
+            let resp = row(ui, Id::new(("surface_row", s.id)), marked, 24.0, thumb, icon, text);
             let eye = if s.visible { RichText::new("👁").size(15.0).color(Color32::from_gray(235)) } else { RichText::new("👁").size(15.0).color(Color32::from_gray(55)) };
             if row_button(ui, resp.rect, resp.rect.min.x + 12.0, eye, if s.visible { t("Synlig – klicka för att dölja", "Visible – click to hide") } else { t("Dold – klicka för att visa", "Hidden – click to show") }) {
                 let mut ns = s.clone();
@@ -318,7 +320,11 @@ impl LumaApp {
                 None => resp,
             };
             if resp.clicked() {
-                select = Some(s.id);
+                if ui.input(|i| i.modifiers.shift) {
+                    toggle = Some(s.id);
+                } else {
+                    select = Some(s.id);
+                }
             }
             resp.dnd_set_drag_payload(DragSurface(s.id));
             if resp.dragged() {
@@ -365,6 +371,9 @@ impl LumaApp {
         }
         if let Some(id) = select {
             self.select(Some(id));
+        }
+        if let Some(id) = toggle {
+            self.toggle_in_group(id);
         }
         if let Some(c) = action {
             self.exec(c, None);

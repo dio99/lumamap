@@ -58,6 +58,15 @@ pub struct Drag {
     start_pts: Vec<Pt>,
     start: Pos2,
     gesture: u64,
+    /// Övriga markerade ytor som flyttas med (och var de låg från början).
+    group: Vec<(SurfaceId, Vec<Pt>)>,
+}
+
+/// Markeringsram som dras i en tom del av bilden.
+pub struct Band {
+    salt: &'static str,
+    start: Pos2,
+    now: Pos2,
 }
 
 pub const ACCENT: Color32 = Color32::from_rgb(0, 190, 255);
@@ -220,13 +229,34 @@ impl LumaApp {
             }
         }
 
+        let shift = ui.input(|i| i.modifiers.shift);
         if resp.drag_started() {
             let origin = ui.input(|i| i.pointer.press_origin()).or(pointer);
             if let Some(origin) = origin {
-                match self.hit(rect, kind, origin) {
+                // Shift + dra: markeringsram även över ytor (bakgrunden täcker ofta allt).
+                let hit = if shift && matches!(kind, PtKind::Dst(_)) { None } else { self.hit(rect, kind, origin) };
+                match hit {
                     Some((id, point)) => {
-                        self.select(Some(id));
-                        self.selected_point = point.filter(|_| kind != PtKind::Src);
+                        // Drar man i en yta som ingår i en markering flyttas alla.
+                        let in_group = point.is_none() && matches!(kind, PtKind::Dst(_)) && self.group.len() > 1 && self.group.contains(&id);
+                        if in_group {
+                            self.selected = Some(id);
+                            self.selected_point = None;
+                        } else {
+                            self.select(Some(id));
+                            self.selected_point = point.filter(|_| kind != PtKind::Src);
+                        }
+                        let group: Vec<(SurfaceId, Vec<Pt>)> = if in_group {
+                            self.group
+                                .iter()
+                                .filter(|g| **g != id)
+                                .filter_map(|g| self.project.surface(*g))
+                                .filter(|s| !s.locked)
+                                .map(|s| (s.id, s.dst_pts.clone()))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
                         let locked = self.project.surface(id).is_some_and(|s| s.locked);
                         if !locked {
                             self.drag = Some(Drag {
@@ -237,18 +267,68 @@ impl LumaApp {
                                 start_pts: self.points(id, kind).unwrap_or_default().to_vec(),
                                 start: origin,
                                 gesture: self.new_gesture(),
+                                group,
                             });
                         }
                     }
-                    None if matches!(kind, PtKind::Dst(_)) => self.select(None),
+                    None if matches!(kind, PtKind::Dst(_)) => {
+                        // Tom yta: dra en markeringsram (Shift lägger till).
+                        if !shift {
+                            self.select(None);
+                        }
+                        self.band = Some(Band { salt, start: origin, now: origin });
+                    }
                     None => {}
+                }
+            }
+        }
+
+        if let (Some(b), Some(pos)) = (&mut self.band, pointer) {
+            if b.salt == salt && resp.dragged() {
+                b.now = pos;
+            }
+        }
+        if resp.drag_stopped() {
+            if let Some(b) = self.band.take().filter(|b| b.salt == salt) {
+                let r = Rect::from_two_pos(b.start, b.now);
+                // Ytor som ligger helt inne i ramen.
+                let hits: Vec<SurfaceId> = self
+                    .canvas_surfaces(kind)
+                    .into_iter()
+                    .filter(|id| {
+                        let pts = self.points(*id, kind).unwrap_or_default();
+                        self.project.surface(*id).is_some_and(|s| s.visible) && !pts.is_empty() && pts.iter().all(|p| r.contains(v.pt(*p)))
+                    })
+                    .collect();
+                for id in hits {
+                    self.group.insert(id);
+                    if self.selected.is_none() {
+                        self.selected = Some(id);
+                    }
+                }
+                if let Some(id) = self.selected {
+                    self.select_keep_group(id);
                 }
             }
         }
 
         if resp.dragged() {
             if let (Some(d), Some(pos)) = (&self.drag, pointer) {
-                if d.kind == kind && d.salt == salt {
+                if d.kind == kind && d.salt == salt && !d.group.is_empty() {
+                    // Hela markeringen flyttas lika mycket, som ett ångra-steg.
+                    let (now, then) = (v.norm(pos), v.norm(d.start));
+                    let delta = [now[0] - then[0], now[1] - then[1]];
+                    let moved = |pts: &[Pt]| pts.iter().map(|p| [p[0] + delta[0], p[1] + delta[1]]).collect::<Vec<Pt>>();
+                    let mut cmds = Vec::new();
+                    for (id, start) in std::iter::once((d.surface, d.start_pts.clone())).chain(d.group.iter().cloned()) {
+                        if let Some(mut s) = self.project.surface(id).cloned() {
+                            s.dst_pts = moved(&start);
+                            cmds.push(Command::ReplaceSurface(s));
+                        }
+                    }
+                    let g = d.gesture;
+                    self.exec(Command::Batch(cmds), Some(g));
+                } else if d.kind == kind && d.salt == salt {
                     // Förflyttningen räknas i oförvrängda koordinater.
                     let (now, then) = (v.norm(pos), v.norm(d.start));
                     let delta = [now[0] - then[0], now[1] - then[1]];
@@ -286,11 +366,13 @@ impl LumaApp {
 
         if resp.clicked() {
             match pointer.and_then(|p| self.hit(rect, kind, p)) {
+                // Shift-klick lägger till eller tar bort ytan ur markeringen.
+                Some((id, None)) if shift && matches!(kind, PtKind::Dst(_)) => self.toggle_in_group(id),
                 Some((id, point)) => {
                     self.select(Some(id));
                     self.selected_point = point.filter(|_| kind != PtKind::Src);
                 }
-                None if matches!(kind, PtKind::Dst(_)) => self.select(None),
+                None if matches!(kind, PtKind::Dst(_)) && !shift => self.select(None),
                 None => {}
             }
         }
@@ -363,7 +445,10 @@ impl LumaApp {
             let outline: Vec<Pos2> = self.outline(id, kind).iter().map(|p| v.pt(*p)).collect();
             let mesh = self.mesh_size(id, kind);
             let selected = self.selected == Some(id);
-            let color = if matches!(kind, PtKind::Mask(_)) {
+            let grouped = !selected && matches!(kind, PtKind::Dst(_)) && self.group.len() > 1 && self.group.contains(&id);
+            let color = if grouped {
+                ACCENT.gamma_multiply(0.8)
+            } else if matches!(kind, PtKind::Mask(_)) {
                 MASK_COLOR
             } else if !s.visible {
                 Color32::from_gray(90)
@@ -407,7 +492,7 @@ impl LumaApp {
                     painter.add(egui::Shape::line(line, thin));
                 }
             }
-            painter.add(egui::Shape::closed_line(outline.clone(), Stroke::new(if selected { 2.0 } else { 1.0 }, color)));
+            painter.add(egui::Shape::closed_line(outline.clone(), Stroke::new(if selected || grouped { 2.0 } else { 1.0 }, color)));
 
             // Namnet uppe till vänster i ytan (dolda ytor får bara konturen).
             // Namn som skulle hamna på varandra flyttas ned en rad.
@@ -441,6 +526,11 @@ impl LumaApp {
         }
         if let PtKind::Dst(out) = kind {
             self.paint_leds(&painter, &v, out);
+        }
+        if let Some(b) = &self.band {
+            let r = Rect::from_two_pos(b.start, b.now);
+            painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(0, 190, 255, 25));
+            painter.rect_stroke(r, 0.0, Stroke::new(1.0, ACCENT), egui::StrokeKind::Inside);
         }
     }
 

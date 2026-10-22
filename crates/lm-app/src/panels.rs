@@ -574,6 +574,9 @@ impl LumaApp {
         let before = s.clone();
         let mut gesture = None;
 
+        if self.group.len() > 1 {
+            self.group_bar(ui);
+        }
         let r = ui.add(egui::TextEdit::singleline(&mut s.name).font(egui::TextStyle::Heading));
         if r.changed() || r.gained_focus() {
             gesture = Some(self.field_gesture(&r));
@@ -894,6 +897,54 @@ impl LumaApp {
                 }
             }
         }
+    }
+
+    /// Flera ytor markerade: vad man kan göra med alla på en gång.
+    fn group_bar(&mut self, ui: &mut Ui) {
+        egui::Frame::group(ui.style()).fill(Color32::from_rgb(20, 45, 60)).show(ui, |ui| {
+            ui.label(RichText::new(format!("{} {}", self.group.len(), t("ytor markerade", "surfaces selected"))).strong());
+            ui.label(RichText::new(t("Dra en av dem för att flytta alla. Pilar flyttar alla.", "Drag one of them to move them all. Arrows move them all.")).size(12.0).color(Color32::from_gray(150)));
+            ui.horizontal_wrapped(|ui| {
+                let set_all = |app: &mut Self, f: &dyn Fn(&mut Surface)| {
+                    let cmds: Vec<Command> = app
+                        .group
+                        .iter()
+                        .filter_map(|id| app.project.surface(*id).cloned())
+                        .map(|mut s| {
+                            f(&mut s);
+                            Command::ReplaceSurface(s)
+                        })
+                        .collect();
+                    app.exec(Command::Batch(cmds), None);
+                };
+                if ui.button(t("👁 Visa", "👁 Show")).clicked() {
+                    set_all(self, &|s| s.visible = true);
+                }
+                if ui.button(t("Dölj", "Hide")).clicked() {
+                    set_all(self, &|s| s.visible = false);
+                }
+                if ui.button(t("🔒 Lås", "🔒 Lock")).clicked() {
+                    set_all(self, &|s| s.locked = true);
+                }
+                if ui.button(t("Lås upp", "Unlock")).clicked() {
+                    set_all(self, &|s| s.locked = false);
+                }
+                if let Some(src) = self.selected_source {
+                    let name = self.project.source(src).map(|s| s.name.clone()).unwrap_or_default();
+                    if ui.button(format!("🎞 {name}")).on_hover_text(t("Ge alla markerade ytor det här mediet", "Give all selected surfaces this media")).clicked() {
+                        set_all(self, &|s| s.source = Some(src));
+                    }
+                }
+                if ui.button(t("🗑 Ta bort", "🗑 Delete")).clicked() {
+                    self.remove_selected();
+                }
+                if ui.button(t("Avmarkera", "Deselect")).clicked() {
+                    let id = self.selected;
+                    self.select(id);
+                }
+            });
+        });
+        ui.add_space(6.0);
     }
 
     /// Lägger en kopia av ytan lite förskjuten och markerar den.
