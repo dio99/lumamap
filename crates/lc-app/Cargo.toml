@@ -29,3 +29,67 @@ env_logger.workspace = true
 image.workspace = true
 qrcode.workspace = true
 jiff.workspace = true
+
+# .deb (Debian, Ubuntu, Linux Mint): cargo deb -p luxcanvas
+[package.metadata.deb]
+name = "luxcanvas"
+maintainer = "Anders Larsson <anderslarsson102@gmail.com>"
+copyright = "2026, Anders Larsson"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+LuxCanvas is free, open-source projection mapping (video mapping) software. \
+Put video on any surface by dragging its corners until it fits - walls, \
+pillars, balls and whole buildings - with one or more projectors, edge \
+blending, cues, effects in time with the music, OSC, MIDI, DMX and LED \
+pixel strips over Art-Net."""
+section = "video"
+priority = "optional"
+# Biblioteken hittas automatiskt; GStreamers plugins för video och ljud behövs också.
+depends = "$auto, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav, gstreamer1.0-pulseaudio"
+recommends = "gstreamer1.0-plugins-ugly, gstreamer1.0-vaapi"
+assets = [
+    ["target/release/luxcanvas", "usr/bin/", "755"],
+    ["../../packaging/linux/io.github.dio99.LuxCanvas.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/linux/io.github.dio99.LuxCanvas.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../packaging/linux/io.github.dio99.LuxCanvas.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["../../packaging/linux/io.github.dio99.LuxCanvas.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../packaging/linux/io.github.dio99.LuxCanvas.mime.xml", "usr/share/mime/packages/io.github.dio99.LuxCanvas.xml", "644"],
+    ["../../examples/*.lmap", "usr/share/luxcanvas/examples/", "644"],
+    ["../../examples/thumbs/*", "usr/share/luxcanvas/examples/thumbs/", "644"],
+    ["../../examples/media/*.mp4", "usr/share/luxcanvas/examples/media/", "644"],
+    ["../../examples/media/*.jpg", "usr/share/luxcanvas/examples/media/", "644"],
+    ["../../README.md", "usr/share/doc/luxcanvas/", "644"],
+]
+
+# .rpm (Fedora): cargo generate-rpm -p crates/lc-app
+[package.metadata.generate-rpm]
+name = "luxcanvas"
+summary = "Projection mapping (video mapping) for walls, pillars, balls and buildings"
+license = "AGPL-3.0-or-later"
+url = "https://github.com/dio99/luxcanvas"
+auto-req = "no"
+assets = [
+    { source = "target/release/luxcanvas", dest = "/usr/bin/luxcanvas", mode = "755" },
+    { source = "../../packaging/linux/io.github.dio99.LuxCanvas.desktop", dest = "/usr/share/applications/io.github.dio99.LuxCanvas.desktop", mode = "644" },
+    { source = "../../packaging/linux/io.github.dio99.LuxCanvas.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.dio99.LuxCanvas.svg", mode = "644" },
+    { source = "../../packaging/linux/io.github.dio99.LuxCanvas.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github.dio99.LuxCanvas.png", mode = "644" },
+    { source = "../../packaging/linux/io.github.dio99.LuxCanvas.metainfo.xml", dest = "/usr/share/metainfo/io.github.dio99.LuxCanvas.metainfo.xml", mode = "644" },
+    { source = "../../packaging/linux/io.github.dio99.LuxCanvas.mime.xml", dest = "/usr/share/mime/packages/io.github.dio99.LuxCanvas.xml", mode = "644" },
+    { source = "../../examples/*.lmap", dest = "/usr/share/luxcanvas/examples/", mode = "644" },
+    { source = "../../examples/thumbs/*", dest = "/usr/share/luxcanvas/examples/thumbs/", mode = "644" },
+    { source = "../../examples/media/*.mp4", dest = "/usr/share/luxcanvas/examples/media/", mode = "644" },
+    { source = "../../examples/media/*.jpg", dest = "/usr/share/luxcanvas/examples/media/", mode = "644" },
+    { source = "../../README.md", dest = "/usr/share/doc/luxcanvas/README.md", mode = "644", doc = true },
+    { source = "../../LICENSE", dest = "/usr/share/licenses/luxcanvas/LICENSE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+gstreamer1 = "*"
+gstreamer1-plugins-base = "*"
+gstreamer1-plugins-good = "*"
+gstreamer1-plugins-bad-free = "*"
+glib2 = "*"
+
+[package.metadata.generate-rpm.recommends]
+gstreamer1-plugin-libav = "*"
+gstreamer1-plugins-ugly-free = "*"

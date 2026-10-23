@@ -104,12 +104,26 @@ Download from the [latest release](https://github.com/dio99/luxcanvas/releases/l
   chmod +x LuxCanvas-*-x86_64.AppImage
   ./LuxCanvas-*-x86_64.AppImage
   ```
-- **Flatpak** – installs into the menu and keeps its runtime up to date
-  (the runtime comes from Flathub automatically):
+- **.deb** – Ubuntu 24.04+, Linux Mint 22+, Debian 13+: double-click it, or
+  ```bash
+  sudo apt install ./luxcanvas_*_amd64.deb
+  ```
+- **.rpm** – Fedora 40+:
+  ```bash
+  sudo dnf install ./luxcanvas-*.x86_64.rpm
+  ```
+- **Flatpak** – any distribution with Flatpak; the runtime comes from Flathub
+  automatically:
   ```bash
   flatpak install --user LuxCanvas-*-x86_64.flatpak
   flatpak run io.github.dio99.LuxCanvas
   ```
+
+The .deb and .rpm use the system's GStreamer and install the examples in
+`/usr/share/luxcanvas`. Older distributions: use the AppImage.
+
+To build all four for a release: `packaging/build-release.sh` (files end up
+in `target/release-files/`).
 
 ### Building the AppImage
 
