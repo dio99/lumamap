@@ -97,17 +97,30 @@ mapping over Art-Net, audio- and motion-reactive effects.
 
 ## Install
 
-### AppImage
+Download from the [latest release](https://github.com/dio99/luxcanvas/releases/latest):
 
-Build a self-contained AppImage (GStreamer included) that runs on most
-Linux distributions:
+- **AppImage** – runs on most distributions, nothing to install:
+  ```bash
+  chmod +x LuxCanvas-*-x86_64.AppImage
+  ./LuxCanvas-*-x86_64.AppImage
+  ```
+- **Flatpak** – installs into the menu and keeps its runtime up to date
+  (the runtime comes from Flathub automatically):
+  ```bash
+  flatpak install --user LuxCanvas-*-x86_64.flatpak
+  flatpak run io.github.dio99.LuxCanvas
+  ```
+
+### Building the AppImage
+
+Build a self-contained AppImage (GStreamer included) yourself:
 
 ```bash
 packaging/appimage/build.sh
 ./target/appimage/LuxCanvas-x86_64.AppImage
 ```
 
-### Flatpak
+### Building the Flatpak
 
 ```bash
 flatpak install --user flathub org.flatpak.Builder org.freedesktop.Sdk//26.08 \
@@ -120,6 +133,14 @@ flatpak run io.github.dio99.LuxCanvas
 After changing dependencies, regenerate the offline crate list with
 `python3 packaging/flatpak/cargo-sources.py`. Rebuild the Flatpak after code
 changes – it is built from the repository and does not update itself.
+To make a single-file `.flatpak` for a release:
+
+```bash
+flatpak run org.flatpak.Builder --user --force-clean --repo=target/flatpak-repo \
+    target/flatpak packaging/flatpak/io.github.dio99.LuxCanvas.yml
+flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+    target/flatpak-repo LuxCanvas-x86_64.flatpak io.github.dio99.LuxCanvas
+```
 
 The Flatpak can read media in your Videos, Pictures, Documents, Downloads
 and Desktop folders and on USB drives. If your projects live somewhere else,
