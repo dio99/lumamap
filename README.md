@@ -1,12 +1,22 @@
-# LumaMap
+# LumaMap – projection mapping software for Linux
 
-Projection mapping for Linux. Put video on any surface – a wall, a pillar, a
-gable, a whole house – by dragging its corners until it fits. In the spirit
-of [MapMap](https://mapmap.info) (simple and visual) and
-[Splash](https://sat-mtl.gitlab.io/documentation/splash/) (several projectors
-with edge blending).
+**Free and open-source projection mapping (video mapping) for Linux.** Put
+video on any surface – a wall, a pillar, a ball, a whole house – by dragging
+its corners until it fits. Built in Rust with wgpu and GStreamer, for artists,
+VJs, theatres, museums, shops and anyone decorating their house for
+Christmas or Halloween.
+
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational)](#install)
+[![Rust](https://img.shields.io/badge/made%20with-Rust-orange)](https://www.rust-lang.org/)
+[![Flatpak](https://img.shields.io/badge/package-Flatpak%20%7C%20AppImage-4a86cf)](#install)
 
 The goal: *map a video onto a wall in two minutes without reading a manual.*
+A free alternative to MadMapper, HeavyM and the mapping part of Resolume
+Arena – none of which run on Linux – in the spirit of
+[MapMap](https://mapmap.info) (simple and visual) and
+[Splash](https://sat-mtl.gitlab.io/documentation/splash/) (several projectors
+with edge blending).
 
 ![Four example shows: effects on a triangle, pillar and ellipse; Christmas lights, snow and a greeting; Halloween with a pumpkin, a dancing skeleton and bats; a brick façade bursting open around two windows](docs/hero.jpg)
 
@@ -72,6 +82,18 @@ The goal: *map a video onto a wall in two minutes without reading a manual.*
 - English and Swedish user interface.
 
 ![Animated preview of eight example videos](docs/demo.gif)
+
+## How it compares
+
+| | LumaMap | MadMapper | HeavyM | Resolume Arena |
+|---|---|---|---|---|
+| Runs on Linux | ✅ | – (Windows, macOS) | – (Windows, macOS) | – (Windows, macOS) |
+| Free and open source | ✅ AGPL-3.0 | – (paid) | – (freemium) | – (paid) |
+
+Everything LumaMap does is listed under [Features](#features): surfaces from
+quads to balls and cones, several projectors with edge blending, cues with a
+timeline and schedule, phone remote, OSC, MIDI, DMX lights and LED pixel
+mapping over Art-Net, audio- and motion-reactive effects.
 
 ## Install
 
@@ -438,6 +460,13 @@ The code is a Cargo workspace:
 
 [ARCHITECTURE.md](ARCHITECTURE.md) (in Swedish) describes the design and the
 roadmap.
+
+## Contributing
+
+Bug reports, ideas and pull requests are very welcome – see
+[CONTRIBUTING.md](CONTRIBUTING.md). Photos and videos of LumaMap on real
+walls are the best kind of bug report. If LumaMap is useful to you, a ⭐ on
+GitHub helps other people find it.
 
 ## License
 

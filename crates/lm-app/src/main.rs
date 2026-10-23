@@ -30,8 +30,12 @@ fn main() -> eframe::Result {
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--play" | "-p" => startup.play = true,
+            "--version" | "-V" => {
+                println!("LumaMap {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
             "--help" | "-h" => {
-                println!("{}", lm_core::i18n::t("Användning: lumamap [--play] [projekt.lmap]", "Usage: lumamap [--play] [project.lmap]"));
+                println!("{}", lm_core::i18n::t("Användning: lumamap [--play] [--version] [projekt.lmap]", "Usage: lumamap [--play] [--version] [project.lmap]"));
                 return Ok(());
             }
             _ => startup.file = Some(PathBuf::from(arg)),

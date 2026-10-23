@@ -3,10 +3,13 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.6.0"
 edition = "2021"
 rust-version = "1.95"
 license = "AGPL-3.0-or-later"
+authors = ["Anders Larsson"]
+repository = "https://github.com/dio99/lumamap"
+homepage = "https://github.com/dio99/lumamap"
 
 [workspace.dependencies]
 lm-core = { path = "crates/lm-core" }
