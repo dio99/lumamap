@@ -271,6 +271,14 @@ pub struct Cue {
     /// Gå vidare till nästa cue automatiskt så här många sekunder efter GO.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto: Option<f32>,
+    /// Videorna på cuens synliga ytor börjar om från början vid GO
+    /// (t.ex. en skrämsel som ska spelas från start).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub restart: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -991,6 +999,7 @@ impl Project {
                 })
                 .collect(),
             auto: None,
+            restart: false,
         }
     }
 
@@ -1255,6 +1264,7 @@ mod tests {
             ("christmas", include_str!("../../../examples/christmas.lmap")),
             ("halloween", include_str!("../../../examples/halloween.lmap")),
             ("facade", include_str!("../../../examples/facade.lmap")),
+            ("party", include_str!("../../../examples/party.lmap")),
         ] {
             let p = Project::from_ron(text).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(!p.cues.is_empty(), "{name}");

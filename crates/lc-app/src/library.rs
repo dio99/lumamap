@@ -575,6 +575,8 @@ impl LumaApp {
                     gesture = Some(self.field_gesture(&r));
                 }
             });
+            ui.checkbox(&mut c.restart, t("⏮ Starta videorna från början", "⏮ Start the videos from the beginning"))
+                .on_hover_text(t("T.ex. för en skrämsel som ska spelas från start", "E.g. for a scare that should play from the start"));
             ui.horizontal(|ui| {
                 let mut auto = c.auto.is_some();
                 if ui

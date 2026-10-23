@@ -1,0 +1,33 @@
+(
+    version: 1,
+    settings: (loop_cues: true),
+    sources: [
+        (id: (2), name: "Regnbåge", kind: Video(path: "media/rainbow.mp4", looping: true, muted: true)),
+        (id: (3), name: "Emoji-ansikte", kind: Video(path: "media/emoji-face.mp4", looping: true, muted: true)),
+        (id: (4), name: "Emojiregn", kind: Video(path: "media/emojis.mp4", looping: true, muted: true)),
+    ],
+    surfaces: [
+        (id: (10), name: "Fasad", source: Some((2)), output: (1), opacity: 0.85,
+         src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]),
+        (id: (11), name: "Fönster vänster", source: Some((4)), output: (1),
+         src_pts: [(0.0, 0.0), (0.5, 0.0), (0.5, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.07, 0.22), (0.27, 0.22), (0.27, 0.62), (0.07, 0.62)]),
+        (id: (12), name: "Mittenfönster", source: Some((3)), output: (1),
+         src_pts: [(0.267, 0.0), (0.733, 0.0), (0.733, 1.0), (0.267, 1.0)],
+         dst_pts: [(0.36, 0.18), (0.64, 0.18), (0.64, 0.78), (0.36, 0.78)]),
+        (id: (13), name: "Fönster höger", source: Some((4)), output: (1),
+         src_pts: [(0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.5, 1.0)],
+         dst_pts: [(0.73, 0.22), (0.93, 0.22), (0.93, 0.62), (0.73, 0.62)]),
+        (id: (14), name: "Emojiregn", source: Some((4)), output: (1), visible: false,
+         src_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+         dst_pts: [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]),
+    ],
+    outputs: [(id: (1), name: "Projektor 1", resolution: (1920, 1080))],
+    cues: [
+        (id: (20), name: "Fönsterfest", fade: 1.0, surfaces: [(surface: (10), visible: true, opacity: 0.85, source: Some((2))), (surface: (11), visible: true, opacity: 1.0, source: Some((4))), (surface: (12), visible: true, opacity: 1.0, source: Some((3))), (surface: (13), visible: true, opacity: 1.0, source: Some((4))), (surface: (14), visible: false, opacity: 1.0, source: Some((4)))], auto: Some(24.0)),
+        (id: (21), name: "Bara regnbåge", fade: 1.5, surfaces: [(surface: (10), visible: true, opacity: 1.0, source: Some((2))), (surface: (11), visible: false, opacity: 1.0, source: Some((4))), (surface: (12), visible: false, opacity: 1.0, source: Some((3))), (surface: (13), visible: false, opacity: 1.0, source: Some((4))), (surface: (14), visible: false, opacity: 1.0, source: Some((4)))], auto: Some(12.0)),
+        (id: (22), name: "Emojiregn", fade: 1.5, surfaces: [(surface: (10), visible: false, opacity: 0.85, source: Some((2))), (surface: (11), visible: false, opacity: 1.0, source: Some((4))), (surface: (12), visible: false, opacity: 1.0, source: Some((3))), (surface: (13), visible: false, opacity: 1.0, source: Some((4))), (surface: (14), visible: true, opacity: 1.0, source: Some((4)))], auto: Some(12.0)),
+    ],
+    next_id: 30,
+)

@@ -49,11 +49,11 @@
   <url type="contribute">https://github.com/dio99/luxcanvas/blob/main/CONTRIBUTING.md</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/dio99/luxcanvas/v1.6.2/docs/hero.jpg</image>
+      <image>https://raw.githubusercontent.com/dio99/luxcanvas/v1.7.0/docs/hero.jpg</image>
       <caption>Example shows: effects, Christmas, Halloween and a façade illusion</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/dio99/luxcanvas/v1.6.2/docs/screenshot.jpg</image>
+      <image>https://raw.githubusercontent.com/dio99/luxcanvas/v1.7.0/docs/screenshot.jpg</image>
       <caption>The editor</caption>
     </screenshot>
   </screenshots>
@@ -63,6 +63,11 @@
   </branding>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.7.0" date="2026-10-23">
+      <description>
+        <p>Five new example videos – floating emojis, a giant emoji face, pulsing rainbow rings, a jump scare and dripping blood – a new Party example, and cues that can start their videos from the beginning.</p>
+      </description>
+    </release>
     <release version="1.6.2" date="2026-10-23">
       <description>
         <p>Packaging for Flathub: newer runtime and access to the usual media folders instead of the whole home folder.</p>

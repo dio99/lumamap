@@ -50,8 +50,8 @@ with edge blending).
 **Content**
 - Video files, images, webcams, network streams (RTSP, SRT, UDP, HTTP),
   solid colours and **live patterns** drawn on the GPU – no video needed.
-- **21 ready-made loops** to use freely – space, fire, aurora, Christmas,
-  Halloween, a collapsing brick façade and more (see [Examples](#examples)).
+- **26 ready-made loops** to use freely – space, fire, aurora, emojis,
+  rainbows, Christmas, a scary Halloween, a collapsing brick façade and more (see [Examples](#examples)).
 - **Effects on any surface:** edge lights that follow the surface's shape
   (edge glow, chasing lights, neon frame, light sweep), kaleidoscope, tiles,
   scroll, rotate, pulse, colour cycle, strobe, blur, invert – in time with a
@@ -257,7 +257,7 @@ luxcanvas --play show.lmap
 
 ## Examples
 
-![All 21 example videos](docs/examples.jpg)
+![All 26 example videos](docs/examples.jpg)
 
 `examples/media/` holds seamless 12-second loops (1280×720) that you are free
 to use in your own shows:
@@ -285,6 +285,12 @@ to use in your own shows:
 | `bats.mp4` | Bats flapping past the full moon |
 | `eyes.mp4` | Glowing eyes in the dark – for windows and bushes |
 | `skeleton.mp4` | A dancing skeleton – for a door or a window |
+| `scare.mp4` | A dark, flickering corridor; something comes closer – then a face jumps at you. Start it with 🏃 Motion when someone walks past |
+| `blood.mp4` | Blood running down the wall, and "GET OUT" – on black, for a door or a window with **Add** |
+| **Party** | |
+| `emojis.mp4` | Happy emojis floating up, swaying and pulsing to the beat |
+| `emoji-face.mp4` | One giant emoji that changes its face every two seconds – for a window |
+| `rainbow.mp4` | Rainbow rings pulsing to the beat (120 BPM) |
 | **Façade fun** | |
 | `bricks.mp4` | The brick wall falls apart, light pours out, and it rebuilds itself |
 | `window.mp4` | A silhouette walks past a lit window and waves – map it onto a real window |
@@ -300,17 +306,20 @@ There are also greeting cards: `god-jul.jpg`, `merry-christmas.jpg`,
 | `examples/geometry.lmap` | A geometric show without any video: a neon frame, a triangle of chasing lights, a tunnel pattern in a circle, two neon diamonds and a light sweep |
 | `examples/objects.lmap` | Mapping real objects: a galaxy on a ball, Matrix rain on a round pillar, a Christmas tree of lights on a cone |
 | `examples/christmas.lmap` | Snow on the façade, lights along the eaves, Santa, a "God Jul" greeting with glitter |
-| `examples/halloween.lmap` | Bats and the moon, a pumpkin on the steps, ghosts, a skeleton in the door, eyes in the bushes |
+| `examples/halloween.lmap` | Bats and the moon, a pumpkin on the steps, ghosts, a skeleton in the door, eyes in the bushes, blood on the door – and a jump scare that starts the videos from the beginning and goes back by itself |
+| `examples/party.lmap` | A rainbow façade with a giant emoji face in the middle window and emojis in the side windows; runs by itself in a loop |
 | `examples/facade.lmap` | The brick wall illusion over the whole house, with the silhouette film in two windows |
-| `examples/gallery.lmap` | Every example video full screen, one cue each |
+| `examples/gallery.lmap` | The first ten videos full screen, one cue each |
 
 **Tip:** videos on a black background – lights, eyes, ghosts, the skeleton,
 the pumpkin – look best with the blend mode **Add**. Black then becomes
 transparent and only the light is projected.
 
-The videos are generated from code, so there are no licensing questions and
-you can change them. Edit `examples/media/generate.py` and run it (needs
-numpy and ffmpeg; Pillow for Matrix, the seasonal videos and the cards):
+The videos are generated from code, so you can use them freely and change
+them. The emoji pictures in `emojis.mp4` and `emoji-face.mp4` come from
+[Noto Emoji](https://github.com/googlefonts/noto-emoji) (Apache License 2.0). Edit `examples/media/generate.py` and run it (needs
+numpy and ffmpeg; Pillow for Matrix, the seasonal videos, the cards and
+the emojis, which also need the Noto Color Emoji font):
 
 ```bash
 python3 examples/media/generate.py            # everything
@@ -523,6 +532,6 @@ LuxCanvas är videomappning för Linux: lägg video på väggar, pelare och hela
 genom att dra hörnen tills de passar. Det klarar flera projektorer med
 keystone och kantblandning, masker, inriktning med webbkamera, effekter som
 följer musiken, cues med övergångar och styrning via OSC, MIDI och DMX-ljus.
-I `examples/` finns 21 fria videoloopar – bland annat jul och halloween – och
+I `examples/` finns 26 fria videoloopar – bland annat emojis, regnbåge, jul och en läskig halloween – och
 färdiga exempelprojekt. Gränssnittet finns på svenska och engelska; byt språk
 under ☰ → Language / Språk. Installation och användning beskrivs ovan.

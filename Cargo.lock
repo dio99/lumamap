@@ -1574,7 +1574,7 @@ dependencies = [
 
 [[package]]
 name = "lc-control"
-version = "1.6.2"
+version = "1.7.0"
 dependencies = [
  "lc-core",
  "log",
@@ -1583,7 +1583,7 @@ dependencies = [
 
 [[package]]
 name = "lc-core"
-version = "1.6.2"
+version = "1.7.0"
 dependencies = [
  "ron",
  "serde",
@@ -1591,11 +1591,11 @@ dependencies = [
 
 [[package]]
 name = "lc-geom"
-version = "1.6.2"
+version = "1.7.0"
 
 [[package]]
 name = "lc-media"
-version = "1.6.2"
+version = "1.7.0"
 dependencies = [
  "gstreamer",
  "gstreamer-app",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "lc-render"
-version = "1.6.2"
+version = "1.7.0"
 dependencies = [
  "egui",
  "egui-wgpu",
@@ -1694,7 +1694,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "luxcanvas"
-version = "1.6.2"
+version = "1.7.0"
 dependencies = [
  "eframe",
  "env_logger",

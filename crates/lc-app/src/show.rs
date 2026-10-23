@@ -37,6 +37,17 @@ impl LumaApp {
                 self.start_media_fade(cs.surface, old, cue.fade);
             }
         }
+        // Videorna börjar om från början om cuen vill det.
+        if cue.restart {
+            for cs in cue.surfaces.iter().filter(|cs| cs.visible) {
+                if let Some(m) = cs.source.and_then(|id| self.media.get_mut(id)) {
+                    if m.is_video() {
+                        m.seek(0.0);
+                        m.play();
+                    }
+                }
+            }
+        }
         let (start, steps) = cue_start(&self.project, &cue);
         self.exec(start, Some(gesture));
         if !steps.is_empty() {

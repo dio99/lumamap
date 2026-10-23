@@ -1180,6 +1180,318 @@ def window():
 
     encode("window", (frame(i) for i in range(N)))
 
+
+# ---------- Emojis, regnbåge och skräck ----------
+
+EMOJI_FONT = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+
+
+def emoji_image(ch, px):
+    """En färgemoji (Noto Color Emoji) som RGBA-bild, `px` bred."""
+    from PIL import Image, ImageDraw, ImageFont
+    f = ImageFont.truetype(EMOJI_FONT, 109)  # färgtypsnittet finns bara i 109 px
+    im = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((10, 10), ch, font=f, embedded_color=True)
+    im = im.crop(im.getbbox())
+    return im.resize((px, max(1, round(px * im.height / im.width))), Image.LANCZOS)
+
+
+def hsv(h, s, v):
+    """HSV → RGB för numpy-arrayer (h i varv 0..1)."""
+    h = (h % 1.0) * 6
+    c = v * s
+    x = c * (1 - np.abs(h % 2 - 1))
+    z = np.zeros_like(h)
+    k = h.astype(int) % 6
+    r = np.choose(k, [c, x, z, z, x, c])
+    g = np.choose(k, [x, c, c, x, z, z])
+    b = np.choose(k, [z, z, x, c, c, x])
+    m = v - c
+    return np.stack([r + m, g + m, b + m], axis=-1)
+
+
+def emojis():
+    """Glada emojis som svävar uppåt, gungar och pulserar i takt."""
+    from PIL import Image
+    rng = np.random.default_rng(31)
+    chars = "😀😂😍🥳😎🤩😜🎉❤️⭐🌈🦄🍕🎈💖😺🤪🔥"
+    chars = [c for c in chars if c != "️"]
+    n = 34
+    items = []
+    for k in range(n):
+        px = int(rng.uniform(80, 170))
+        items.append(dict(
+            img=emoji_image(chars[k % len(chars)], px),
+            x=rng.uniform(0, W), u=rng.uniform(0, 1), speed=int(rng.integers(1, 3)),
+            wob=rng.uniform(15, 45), ph=rng.uniform(0, TAU), rot=rng.uniform(8, 22),
+        ))
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    grad = (xx / W * 0.35 + yy / H * 0.25)
+
+    def frame(i):
+        t = i / N
+        # Bakgrund: mjuk regnbåge som långsamt vandrar runt färghjulet.
+        bg = hsv(grad + t, 0.45, 0.95)
+        im = Image.fromarray((bg * 255).astype(np.uint8)).convert("RGBA")
+        beat = np.exp(-((t * 24) % 1.0) / 0.12)  # 120 BPM
+        for e in items:
+            span = H + 2 * 200
+            y = H + 200 - ((e["u"] + e["speed"] * t) % 1.0) * span
+            x = e["x"] + e["wob"] * np.sin(TAU * 2 * t + e["ph"])
+            scale = 1 + 0.1 * beat
+            spr = e["img"].resize((int(e["img"].width * scale), int(e["img"].height * scale)), Image.BILINEAR)
+            spr = spr.rotate(e["rot"] * np.sin(TAU * e["speed"] * t + e["ph"]), resample=Image.BICUBIC, expand=True)
+            im.alpha_composite(spr, (int(x - spr.width / 2), int(y - spr.height / 2)))
+        return np.asarray(im.convert("RGB"))
+
+    encode("emojis", (frame(i) for i in range(N)))
+
+
+def emoji_face():
+    """En jättestor emoji som byter min i takt – för ett fönster."""
+    from PIL import Image
+    faces = [emoji_image(c, 520) for c in "😀😉😂😍😮😎"]
+    per = N // len(faces)  # 2 s per min
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    ang = np.arctan2(yy - H / 2, xx - W / 2)
+    rad = np.hypot(xx - W / 2, yy - H / 2)
+
+    def frame(i):
+        t = i / N
+        # Solstrålar som snurrar ett varv per loop.
+        rays = (np.sin(ang * 12 + TAU * t) > 0).astype(np.float32)
+        base = np.array([1.0, 0.84, 0.28]) * (0.86 + 0.14 * rays[..., None])
+        base *= (1 - 0.18 * np.clip(rad / (W * 0.6), 0, 1))[..., None]
+        im = Image.fromarray((np.clip(base, 0, 1) * 255).astype(np.uint8)).convert("RGBA")
+        k, local = divmod(i, per)
+        face = faces[k % len(faces)]
+        lt = local / FPS
+        # "Pop" när minen byts, och en studs per taktslag.
+        pop = 1 + 0.28 * np.exp(-lt / 0.12) * np.cos(lt * 40)
+        bounce = abs(np.sin(TAU * 2 * lt / 1.0))
+        sx, sy = pop * (1 + 0.04 * bounce), pop * (1 - 0.04 * bounce)
+        spr = face.resize((int(face.width * sx), int(face.height * sy)), Image.BICUBIC)
+        im.alpha_composite(spr, (int(W / 2 - spr.width / 2), int(H / 2 - spr.height / 2 - 40 * bounce)))
+        return np.asarray(im.convert("RGB"))
+
+    encode("emoji-face", (frame(i) for i in range(N)))
+
+
+def rainbow():
+    """Regnbågsringar som pulserar i takt (120 BPM) och vrider sig."""
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    rad = np.hypot(xx - W / 2, yy - H / 2) / H
+    ang = np.arctan2(yy - H / 2, xx - W / 2)
+
+    def frame(i):
+        t = i / N
+        beat = (t * 24) % 1.0
+        pulse = np.exp(-beat / 0.18)
+        hue = rad * 1.6 - 4 * t + 0.08 * np.sin(3 * ang + TAU * 2 * t)
+        rings = 0.55 + 0.45 * np.cos(TAU * (rad * 5 - 12 * t))
+        v = np.clip(0.35 + 0.5 * rings + 0.35 * pulse * np.exp(-rad * 1.5), 0, 1)
+        return hsv(hue, 0.95, v)
+
+    encode("rainbow", (frame(i) for i in range(N)))
+
+
+def ghoul_face(size):
+    """Ett blekt spökansikte med tomma ögon och ett skrikande gap (RGB 0..1, alfa)."""
+    from PIL import Image, ImageDraw
+    w, h = size
+    rng = np.random.default_rng(13)
+    skin = Image.new("L", size, 0)
+    d = ImageDraw.Draw(skin)
+    d.ellipse([w * 0.16, h * 0.0, w * 0.84, h * 0.7], fill=255)
+    d.polygon([(w * 0.17, h * 0.42), (w * 0.83, h * 0.42), (w * 0.66, h * 1.0), (w * 0.34, h * 1.0)], fill=255)
+    holes = Image.new("L", size, 0)
+    dh = ImageDraw.Draw(holes)
+    for ex in (0.34, 0.66):  # djupa, sneda ögonhålor med svarta tårar
+        dh.polygon([(w * (ex - 0.13), h * 0.3), (w * (ex + 0.12), h * 0.24), (w * (ex + 0.1), h * 0.42), (w * (ex - 0.1), h * 0.44)], fill=255)
+        for k in range(3):
+            x = w * (ex - 0.06 + k * 0.05)
+            dh.line([(x, h * 0.42), (x + rng.normal(0, 4), h * rng.uniform(0.55, 0.72))], fill=200, width=int(rng.uniform(5, 10)))
+    dh.ellipse([w * 0.31, h * 0.55, w * 0.69, h * 1.08], fill=255)  # skrikande gap
+    teeth = Image.new("L", size, 0)
+    dt = ImageDraw.Draw(teeth)
+    for k in range(9):  # vassa tänder uppe och nere
+        x = w * (0.33 + k * 0.042)
+        dt.polygon([(x, h * 0.585), (x + w * 0.04, h * 0.585), (x + w * 0.02, h * (0.67 + 0.03 * rng.random()))], fill=255)
+    a = np.asarray(skin, np.float32) / 255
+    hole = np.clip(blur(np.asarray(holes, np.float32) / 255, 16) * 1.6, 0, 1)
+    tooth = np.asarray(teeth, np.float32) / 255
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    # Fläckig hud, mörkare mot kanterna, insjunkna kinder.
+    tex = periodic_noise(max(w, h), 18, rng)[:h, :w]
+    edge = np.clip(1 - np.hypot((xx - w / 2) / (w * 0.36), (yy - h * 0.45) / (h * 0.55)), 0, 1)
+    cheeks = sum(np.exp(-(((xx - w * cx) / (w * 0.09)) ** 2 + ((yy - h * 0.55) / (h * 0.1)) ** 2)) for cx in (0.25, 0.75))
+    shade = (0.35 + 0.65 * edge ** 0.6) * (0.75 + 0.35 * tex) * (1 - 0.35 * cheeks)
+    col = np.array([0.78, 0.82, 0.72]) * shade[..., None]
+    col *= (1 - 0.95 * hole)[..., None]
+    col = col * (1 - tooth[..., None]) + tooth[..., None] * np.array([0.85, 0.8, 0.65])
+    # Små röda pupiller längst in i hålorna.
+    for ex in (0.34, 0.66):
+        g = np.exp(-(((xx - w * ex) / (w * 0.016)) ** 2 + ((yy - h * 0.34) / (h * 0.013)) ** 2))
+        col += g[..., None] * np.array([1.0, 0.08, 0.04]) * 2.0
+    # Sprickor.
+    cracks = Image.new("L", size, 0)
+    dc = ImageDraw.Draw(cracks)
+    for _ in range(14):
+        x, y = rng.uniform(w * 0.2, w * 0.8), rng.uniform(h * 0.05, h * 0.5)
+        pts = [(x, y)]
+        for _ in range(5):
+            x, y = x + rng.normal(0, w * 0.03), y + rng.uniform(h * 0.01, h * 0.04)
+            pts.append((x, y))
+        dc.line(pts, fill=255, width=2)
+    col *= (1 - 0.6 * np.asarray(cracks, np.float32)[..., None] / 255)
+    return np.clip(col, 0, 1.4), a
+
+
+def scare():
+    """Mörk korridor med flimrande lampa; något kommer närmare – och sedan
+    hoppar ett ansikte rakt mot en. Passar med 🏃 Rörelse: starta cuen när
+    någon går förbi."""
+    from PIL import Image, ImageDraw
+    rng = np.random.default_rng(66)
+    # Korridoren i perspektiv, ritad en gång.
+    im = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(im)
+    bx0, by0, bx1, by1 = W * 0.42, H * 0.36, W * 0.58, H * 0.68
+    d.polygon([(0, 0), (bx0, by0), (bx0, by1), (0, H)], fill=60)       # vänster vägg
+    d.polygon([(W, 0), (bx1, by0), (bx1, by1), (W, H)], fill=50)       # höger vägg
+    d.polygon([(0, H), (bx0, by1), (bx1, by1), (W, H)], fill=35)       # golv
+    d.polygon([(0, 0), (bx0, by0), (bx1, by0), (W, 0)], fill=25)       # tak
+    d.rectangle([bx0, by0, bx1, by1], fill=12)                          # mörkret längst bort
+    for k in range(1, 6):  # dörrkarmar längs väggarna
+        f = k / 6
+        xl, xr = bx0 * f, W - (W - bx1) * f
+        yt, yb = by0 * f, H - (H - by1) * f
+        d.line([(xl, yt), (xl, yb)], fill=90, width=max(1, int(8 * (1 - f))))
+        d.line([(xr, yt), (xr, yb)], fill=80, width=max(1, int(8 * (1 - f))))
+    hall = blur(np.asarray(im, np.float32) / 255, 2)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    vignette = np.clip(1.25 - np.hypot((xx - W / 2) / W, (yy - H * 0.45) / H) * 1.9, 0, 1)
+    lamp = np.exp(-(((xx - W / 2) / (W * 0.25)) ** 2 + ((yy - H * 0.05) / (H * 0.35)) ** 2))
+    fog = periodic_noise(1024, 60, rng)
+    face, face_a = ghoul_face((700, 1000))
+    drops = sorted(rng.uniform(0, 12, 9))  # tidpunkter då lampan slocknar kort
+
+    def flicker(ts):
+        f = 0.75 + 0.12 * np.sin(TAU * ts * 7 / 12) + 0.08 * np.sin(TAU * ts * 23 / 12 + 1)
+        for d0 in drops:
+            if 0 <= (ts - d0) % 12 < 0.09:
+                f *= 0.15
+        return f
+
+    def frame(i):
+        ts = i / FPS  # sekunder 0..12
+        light = flicker(ts)
+        fx = (np.arange(W) + int(ts / 12 * 1024 * 2)) % 1024
+        fg = fog[(np.arange(H) * 1024 // H)[:, None], fx[None, :]]
+        base = (hall * (0.9 + 1.6 * lamp) + 0.14 * fg) * light
+        img = base[..., None] * np.array([0.75, 0.85, 0.8]) * vignette[..., None]
+        # 3–7 s: något mörkt med röda ögon kommer närmare.
+        if 3 <= ts < 7:
+            k = (ts - 3) / 4
+            s = 0.3 + 1.6 * k ** 2
+            cy = H * 0.52
+            body = np.exp(-(((xx - W / 2) / (W * 0.03 * s)) ** 2 + ((yy - cy - H * 0.06 * s) / (H * 0.12 * s)) ** 2))
+            img *= (1 - 0.85 * np.clip(body, 0, 1))[..., None]
+            blink = 0.0 if 5.4 < ts < 5.55 else 1.0
+            for ex in (-1, 1):
+                g = np.exp(-(((xx - W / 2 - ex * W * 0.008 * s) / (3 + 2 * s)) ** 2 + ((yy - cy) / (2 + 1.5 * s)) ** 2))
+                img += (g * blink * (0.6 + 0.4 * k))[..., None] * np.array([1.0, 0.05, 0.02]) * 1.5
+        # 7–9.5 s: ansiktet hoppar fram.
+        if 7 <= ts < 9.5:
+            k = ts - 7
+            zoom = 1.35 - 0.3 * min(k / 0.25, 1)
+            fade = 1.0 if k < 1.6 else max(0.0, 1 - (k - 1.6) / 0.9)
+            fh = int(H * 1.3 * zoom)
+            fw = int(fh * face.shape[1] / face.shape[0])
+            sm = np.asarray(Image.fromarray((np.clip(face, 0, 1) * 255).astype(np.uint8)).resize((fw, fh), Image.BILINEAR), np.float32) / 255
+            sa = np.asarray(Image.fromarray((face_a * 255).astype(np.uint8)).resize((fw, fh), Image.BILINEAR), np.float32) / 255
+            shake = 30 * np.exp(-k / 0.5)
+            ox = int(W / 2 - fw / 2 + rng.normal(0, shake))
+            oy = int(H / 2 - fh / 2 + rng.normal(0, shake))
+            layer = np.zeros((H, W, 3), np.float32)
+            alpha = np.zeros((H, W), np.float32)
+            x0, y0, x1, y1 = max(ox, 0), max(oy, 0), min(ox + fw, W), min(oy + fh, H)
+            layer[y0:y1, x0:x1] = sm[y0 - oy:y1 - oy, x0 - ox:x1 - ox]
+            alpha[y0:y1, x0:x1] = sa[y0 - oy:y1 - oy, x0 - ox:x1 - ox]
+            # Ryckigt ljus och färgförskjutning, som en trasig kamera.
+            strobe = 0.7 + 0.3 * (int(ts * 20) % 2)
+            layer *= strobe
+            sh = int(8 * np.exp(-k / 0.6)) + 1
+            layer[..., 0] = np.roll(layer[..., 0], sh, axis=1)
+            layer[..., 2] = np.roll(layer[..., 2], -sh, axis=1)
+            a = (alpha * fade)[..., None]
+            img = img * (1 - a) + layer * a
+            flash = np.exp(-k / 0.08)
+            img = img + flash
+            # Störningsband när det tonar bort.
+            if k > 1.4:
+                for _ in range(3):
+                    y, band = int(rng.uniform(0, H - 20)), int(rng.uniform(4, 18))
+                    img[y:y + band] = np.roll(img[y:y + band], int(rng.normal(0, 60)), axis=1)
+        return np.clip(img, 0, 1)
+
+    encode("scare", (frame(i) for i in range(N)))
+
+
+def blood():
+    """Blod som rinner nedför väggen, och texten GET OUT – på svart, så att
+    den passar med blandningsläget Lägg till på en dörr eller ett fönster."""
+    from PIL import Image, ImageDraw
+    rng = np.random.default_rng(99)
+    fnt = font(["DejaVuSerif-Bold.ttf", "LiberationSerif-Bold.ttf"], 210)
+    txt = Image.new("L", (W, H), 0)
+    dt = ImageDraw.Draw(txt)
+    bb = dt.textbbox((0, 0), "GET OUT", font=fnt)
+    tx, ty = (W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.38 - (bb[3] - bb[1]) / 2 - bb[1]
+    dt.text((tx, ty), "GET OUT", font=fnt, fill=255)
+    text = np.asarray(txt, np.float32) / 255
+    # Droppar: från överkanten och från bokstävernas underkant.
+    cols = np.where(text.max(axis=0) > 0.5)[0]
+    bottom = {int(x): int(np.where(text[:, x] > 0.5)[0].max()) for x in cols}
+    drips = []
+    for _ in range(30):
+        drips.append(dict(x=rng.uniform(10, W - 10), y0=0.0, w=rng.uniform(5, 14), cyc=int(rng.integers(1, 3)), ph=rng.uniform(0, 1), max=rng.uniform(0.3, 1.0) * H))
+    for _ in range(18):
+        x = int(rng.choice(cols))
+        drips.append(dict(x=float(x), y0=float(bottom[x]), w=rng.uniform(4, 9), cyc=int(rng.integers(1, 3)), ph=rng.uniform(0, 1), max=rng.uniform(0.15, 0.5) * H))
+    red = np.array([0.78, 0.02, 0.04])
+
+    def frame(i):
+        t = i / N
+        im = Image.new("L", (W, H), 0)
+        hi = Image.new("L", (W, H), 0)
+        d, dh = ImageDraw.Draw(im), ImageDraw.Draw(hi)
+        # Överkanten: en ojämn rand av blod.
+        edge = [(x, 18 + 10 * np.sin(x / 37) + 6 * np.sin(x / 13)) for x in range(0, W + 20, 20)]
+        d.polygon([(0, 0)] + edge + [(W, 0)], fill=255)
+        for dr in drips:
+            p = (dr["ph"] + dr["cyc"] * t) % 1.0
+            grow = min(p / 0.7, 1.0) ** 1.6  # rinner allt fortare
+            fade = 1.0 if p < 0.8 else max(0.0, 1 - (p - 0.8) / 0.2)
+            if fade <= 0:
+                continue
+            y1 = dr["y0"] + grow * dr["max"]
+            v = int(255 * fade)
+            d.line([(dr["x"], dr["y0"]), (dr["x"], y1)], fill=v, width=int(dr["w"]))
+            r = dr["w"] * 0.9
+            d.ellipse([dr["x"] - r, y1 - r, dr["x"] + r, y1 + r * 1.3], fill=v)
+            dh.line([(dr["x"] - dr["w"] * 0.2, dr["y0"]), (dr["x"] - dr["w"] * 0.2, y1)], fill=int(90 * fade), width=max(1, int(dr["w"] / 4)))
+        # Texten tonar fram och bort (ett varv per loop).
+        tv = np.clip(0.5 - 0.9 * np.cos(TAU * t), 0, 1)
+        m = np.maximum(np.asarray(im, np.float32) / 255, text * tv)
+        m = blur(m, 1)
+        img = m[..., None] * red * (0.75 + 0.25 * m[..., None])
+        img += (np.asarray(hi, np.float32) / 255)[..., None] * np.array([0.45, 0.15, 0.15])
+        return glow(img, 0.25, 6)
+
+    encode("blood", (frame(i) for i in range(N)))
+
+
 VIDEOS = {
     "space": space, "fire": fire, "plasma": plasma, "aurora": aurora, "neon": neon,
     "water": water, "rain": rain, "matrix": matrix, "lightgrid": lightgrid, "galaxy": galaxy,
@@ -1189,6 +1501,8 @@ VIDEOS = {
     "cards": cards,
     # Roliga animationer
     "santa": santa, "skeleton": skeleton, "bricks": bricks, "window": window,
+    # Emojis, regnbåge och skräck
+    "emojis": emojis, "emoji-face": emoji_face, "rainbow": rainbow, "scare": scare, "blood": blood,
 }
 
 if __name__ == "__main__":
