@@ -110,8 +110,8 @@ packaging/appimage/build.sh
 ### Flatpak
 
 ```bash
-flatpak install --user flathub org.flatpak.Builder org.freedesktop.Sdk//25.08 \
-    org.freedesktop.Sdk.Extension.rust-stable//25.08
+flatpak install --user flathub org.flatpak.Builder org.freedesktop.Sdk//26.08 \
+    org.freedesktop.Sdk.Extension.rust-stable//26.08
 flatpak run org.flatpak.Builder --user --install --force-clean \
     target/flatpak packaging/flatpak/io.github.dio99.LuxCanvas.yml
 flatpak run io.github.dio99.LuxCanvas
@@ -120,6 +120,14 @@ flatpak run io.github.dio99.LuxCanvas
 After changing dependencies, regenerate the offline crate list with
 `python3 packaging/flatpak/cargo-sources.py`. Rebuild the Flatpak after code
 changes – it is built from the repository and does not update itself.
+
+The Flatpak can read media in your Videos, Pictures, Documents, Downloads
+and Desktop folders and on USB drives. If your projects live somewhere else,
+give it access once:
+
+```bash
+flatpak override --user --filesystem=home io.github.dio99.LuxCanvas
+```
 
 ### From source
 
