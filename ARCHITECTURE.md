@@ -1,4 +1,4 @@
-# LumaMap – Arkitektur
+# LuxCanvas – Arkitektur
 
 Videomappning för Linux, i samma anda som **MapMap** (enkelt, visuellt) och
 **Splash** (flera projektorer, kantblandning). Fokus: *det ska gå att mappa en
@@ -104,15 +104,15 @@ Principer:
 ## 5. Moduler (Cargo workspace)
 
 ```
-lumamap/
+luxcanvas/
 ├── Cargo.toml                 (workspace)
 ├── crates/
-│   ├── lm-core/               Datamodell, Command, Undo, cues, MIDI-kopplingar, DMX, i18n. Ingen GPU.
-│   ├── lm-geom/               Homografi, mesh-splines, hit-test, kamerakalibrering.
-│   ├── lm-media/              GStreamer-källor (fil, kamera, ström), bild, ljudanalys.
-│   ├── lm-render/             wgpu: ytor, effekter, mönster, YUV, edge blend.
-│   ├── lm-control/            OSC-server, rå MIDI, Art-Net, webbserver för mobil-fjärrkontrollen.
-│   └── lm-app/                main(): fönster, egui-editor (library, panels, canvas, welcome), showstyrning, kalibrering.
+│   ├── lc-core/               Datamodell, Command, Undo, cues, MIDI-kopplingar, DMX, i18n. Ingen GPU.
+│   ├── lc-geom/               Homografi, mesh-splines, hit-test, kamerakalibrering.
+│   ├── lc-media/              GStreamer-källor (fil, kamera, ström), bild, ljudanalys.
+│   ├── lc-render/             wgpu: ytor, effekter, mönster, YUV, edge blend.
+│   ├── lc-control/            OSC-server, rå MIDI, Art-Net, webbserver för mobil-fjärrkontrollen.
+│   └── lc-app/                main(): fönster, egui-editor (library, panels, canvas, welcome), showstyrning, kalibrering.
 ├── shaders/                   WGSL
 ├── packaging/                 .desktop, ikon, AppImage, Flatpak
 ├── docs/                      Bilder till README
@@ -120,13 +120,13 @@ lumamap/
 ```
 
 Beroenderiktning (inga cykler):
-`lm-app → lm-render, lm-media, lm-control → lm-core, lm-geom`
+`lc-app → lc-render, lc-media, lc-control → lc-core, lc-geom`
 
-`lm-core` och `lm-geom` är rena och enhetstestbara utan GPU eller video.
+`lc-core` och `lc-geom` är rena och enhetstestbara utan GPU eller video.
 
 ---
 
-## 6. Datamodell (`lm-core`)
+## 6. Datamodell (`lc-core`)
 
 ```rust
 struct Project {
@@ -196,7 +196,7 @@ enum Command {
 
 ---
 
-## 7. Media (`lm-media`)
+## 7. Media (`lc-media`)
 
 ```
  fil/kamera/ström ─▶ GStreamer pipeline ─▶ appsink (RGBA eller NV12)
@@ -219,7 +219,7 @@ enum Command {
 
 ---
 
-## 8. Rendering (`lm-render`)
+## 8. Rendering (`lc-render`)
 
 Per bildruta, per utgång:
 
@@ -231,14 +231,14 @@ Per bildruta, per utgång:
          ──▶  presentera på projektorns fönster (vsync)
 ```
 
-### Geometri (`lm-geom`)
+### Geometri (`lc-geom`)
 - **Quad**: beräkna 3×3-**homografi** från 4 punkter (DLT). Använd den i
   fragment-shadern (projektiv texturering) så att bilden blir perspektivriktig
   *utan* den synliga diagonala sömmen man får av två trianglar med affin UV.
 - **Mesh**: rutnät `cols × rows` kontrollpunkter, bilinjär (senare Bézier)
   interpolation, tesselleras till många trianglar → för böjda ytor/pelare.
 - **Triangel / Ellips**: specialfall som delar samma pipeline.
-- Hit-test (vilket hörn/vilken yta är under musen) görs på CPU i `lm-geom`.
+- Hit-test (vilket hörn/vilken yta är under musen) görs på CPU i `lc-geom`.
 
 ### Utgångar och fönster
 - Varje `Output` = ett winit-fönster med egen `wgpu::Surface`, fullskärm på
@@ -253,18 +253,18 @@ Per bildruta, per utgång:
 
 ---
 
-## 9. Fjärrstyrning (`lm-control`)
+## 9. Fjärrstyrning (`lc-control`)
 
 OSC på UDP-port **12345** (konfigurerbar). Adresser byggs från namn/ID:
 
 ```
-/lumamap/source/<namn>/play
-/lumamap/source/<namn>/pause
-/lumamap/source/<namn>/seek        f   (sekunder)
-/lumamap/surface/<namn>/opacity    f   (0..1)
-/lumamap/surface/<namn>/visible    i
-/lumamap/cue/<nummer>/go
-/lumamap/master/opacity            f   (blackout = 0)
+/luxcanvas/source/<namn>/play
+/luxcanvas/source/<namn>/pause
+/luxcanvas/source/<namn>/seek        f   (sekunder)
+/luxcanvas/surface/<namn>/opacity    f   (0..1)
+/luxcanvas/surface/<namn>/visible    i
+/luxcanvas/cue/<nummer>/go
+/luxcanvas/master/opacity            f   (blackout = 0)
 ```
 
 OSC-tråden översätter meddelanden till `Command` och skickar via kanal till
@@ -278,7 +278,7 @@ huvudtråden – exakt samma väg som musen.
 - "Samla projekt" kopierar alla medier till en mapp → lätt att flytta till
   showdatorn.
 - Fältet `version` + migreringsfunktioner så gamla projekt alltid går att öppna.
-- `lumamap --play show.lmap` startar direkt i Visa-läge i fullskärm
+- `luxcanvas --play show.lmap` startar direkt i Visa-läge i fullskärm
   (för installationer som ska starta vid boot).
 
 ---
@@ -307,10 +307,10 @@ huvudtråden – exakt samma väg som musen.
 | **v1.0** | Stabilitet, dokumentation, exempelprojekt. | ✅ |
 | **v1.1 – UI/UX** | En "➕ Lägg till"-meny, dra media till ytor, levande miniatyrer i listor, öga-ikon och dra-för-ordning i ytlistan, flikar i egenskapspanelen, högerklicksmeny, zoom/panorering i förhandsvisningen, välkomstvy med exempel och senaste projekt, tydligare cue-lista (▶ nu, › nästa). | ✅ |
 | **v1.2** | Snäpp mot andra ytors hörn och kanter och bildens kant (Ctrl = fritt), kantljus-effekter (jagande ljus, neonram, ljussvep) och exemplet `geometry.lmap`. | ✅ |
-| **v1.3** | Fjärrkontroll i mobilen (webbsida i `lm-control::remote` med hemlig nyckel + QR-kod), cues som går vidare automatiskt och loopar, schema (start/släck på klockslag, lokal tid via jiff). | ✅ |
+| **v1.3** | Fjärrkontroll i mobilen (webbsida i `lc-control::remote` med hemlig nyckel + QR-kod), cues som går vidare automatiskt och loopar, schema (start/släck på klockslag, lokal tid via jiff). | ✅ |
 | **v1.4** | Live-fönster med klippgrid (klick eller 1–9, på nästa slag), LED-slingor som läser projektorbilden via en compute-pass (`shaders/led.wgsl`) och skickas som Art-Net över flera universum. | ✅ |
 | **v1.5** | Övertoning när media byts (cues och Live). 3D-objekt: klot, cylinder och kon där bilden lindas runt objektet (`wrap3d` i shadern) + exemplet `objects.lmap`. Markera flera ytor (Shift-klick, Shift-ram, Ctrl+A) och flytta dem tillsammans. | ✅ |
-| **v1.6** | Rörelse från webbkameran (`lm-media::motion`) styr effekter och kan starta en cue. Ritläge: ljuslinjer ritade med musen blir `Shape::Line` – förenklad, mjuk kurva med ett band runt (`lm-geom::line`) och ett eget lysrörssken. | ✅ |
+| **v1.6** | Rörelse från webbkameran (`lc-media::motion`) styr effekter och kan starta en cue. Ritläge: ljuslinjer ritade med musen blir `Shape::Line` – förenklad, mjuk kurva med ett band runt (`lc-geom::line`) och ett eget lysrörssken. | ✅ |
 | Senare | NDI-källor (fungerar redan som ström om GStreamer-pluginet finns), kamerakalibrering och 3D-modellmappning (Splash-nivå), shader-effekter, Syphon/Spout-liknande delning via PipeWire, zero-copy. | |
 
 Utöver planen har också tillkommit: färgjustering per yta, keystone per
@@ -326,7 +326,7 @@ egen Vulkan-kod per drivrutin. Efter NV12-uppladdningen är vinsten liten –
 4K-video tar ca 26 % av en kärna.
 
 **Stabilitet** testas utan fönster med
-`cargo run --release -p lm-render --example soak -- examples/showcase.lmap 1800`,
+`cargo run --release -p lc-render --example soak -- examples/showcase.lmap 1800`,
 som spelar och renderar i 30 minuter och skriver ut minnesanvändningen.
 
 ---
@@ -347,4 +347,4 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
    mer "desktop-känsla" (dockbara paneler) används `egui_dock`.
 2. **Video-backend**: GStreamer valt. Alternativet `ffmpeg-next` ger mer
    kontroll men sämre stöd för kameror/strömmar och hårdvaruavkodning på Linux.
-3. **Namn**: "LumaMap" är arbetsnamn.
+3. **Namn**: "LuxCanvas" är arbetsnamn.

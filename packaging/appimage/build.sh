@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bygger LumaMap som AppImage: target/appimage/LumaMap-x86_64.AppImage
+# Bygger LuxCanvas som AppImage: target/appimage/LuxCanvas-x86_64.AppImage
 #
 # Hämtar linuxdeploy och dess GStreamer-tillägg första gången (till
 # packaging/appimage/tools/). GStreamer-pluginerna från systemet packas med,
@@ -11,7 +11,7 @@ ROOT=$PWD
 TOOLS=$ROOT/packaging/appimage/tools
 OUT=$ROOT/target/appimage
 APPDIR=$OUT/AppDir
-ID=io.github.dio99.LumaMap
+ID=io.github.dio99.LuxCanvas
 
 fetch() {
     if [ ! -x "$TOOLS/$1" ]; then
@@ -34,19 +34,19 @@ fi
 cargo build --release
 
 rm -rf "$APPDIR"
-install -Dm755 target/release/lumamap "$APPDIR/usr/bin/lumamap"
+install -Dm755 target/release/luxcanvas "$APPDIR/usr/bin/luxcanvas"
 install -Dm644 packaging/linux/$ID.metainfo.xml "$APPDIR/usr/share/metainfo/$ID.metainfo.xml"
 install -Dm644 packaging/linux/$ID.mime.xml "$APPDIR/usr/share/mime/packages/$ID.xml"
 # Exemplen följer med så att man kan prova direkt.
-mkdir -p "$APPDIR/usr/share/lumamap"
-cp -r examples "$APPDIR/usr/share/lumamap/"
+mkdir -p "$APPDIR/usr/share/luxcanvas"
+cp -r examples "$APPDIR/usr/share/luxcanvas/"
 
 # Tilläggen och patchelf letas upp via PATH.
 export PATH="$TOOLS:$TOOLS/linuxdeploy/usr/bin:$PATH"
 export APPIMAGE_EXTRACT_AND_RUN=1
 # Hårdvaruavkodare (nvcodec, va) och flera strömprotokoll finns i "bad".
 export GSTREAMER_INCLUDE_BAD_PLUGINS=1
-export OUTPUT="$OUT/LumaMap-x86_64.AppImage"
+export OUTPUT="$OUT/LuxCanvas-x86_64.AppImage"
 cd "$OUT"
 "$TOOLS/linuxdeploy/AppRun" \
     --appdir "$APPDIR" \

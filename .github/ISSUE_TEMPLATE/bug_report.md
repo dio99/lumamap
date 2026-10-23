@@ -18,6 +18,6 @@ labels: bug
 - Distribution:
 - GPU:
 - Installed via: AppImage / Flatpak / source
-- `lumamap --version`:
+- `luxcanvas --version`:
 
 **Log, project file or photo** (optional)

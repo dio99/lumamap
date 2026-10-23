@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=LuxCanvas
+GenericName=Projection Mapping
+GenericName[sv]=Videomappning
+Comment=Map video onto walls, pillars and buildings with one or more projectors
+Comment[sv]=Projicera video på väggar, pelare och byggnader med en eller flera projektorer
+Exec=luxcanvas %f
+Icon=io.github.dio99.LuxCanvas
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=projection;mapping;projection mapping;video mapping;projector;video;VJ;keystone;edge blending;DMX;LED;
+Keywords[sv]=projektion;mappning;videomappning;projektor;video;VJ;keystone;kantblandning;DMX;LED;
+MimeType=application/x-luxcanvas;
+StartupWMClass=io.github.dio99.LuxCanvas

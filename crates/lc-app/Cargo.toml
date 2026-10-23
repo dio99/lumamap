@@ -1,0 +1,31 @@
+[package]
+name = "luxcanvas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Projection mapping (video mapping) software for Linux: map video onto walls, pillars, balls and buildings with one or more projectors"
+readme = "../../README.md"
+keywords = ["projection-mapping", "video-mapping", "vj", "projector", "wgpu"]
+categories = ["multimedia::video", "graphics", "visualization"]
+
+[[bin]]
+name = "luxcanvas"
+path = "src/main.rs"
+
+[dependencies]
+lc-core.workspace = true
+lc-geom.workspace = true
+lc-media.workspace = true
+lc-render.workspace = true
+lc-control.workspace = true
+eframe.workspace = true
+rfd.workspace = true
+log.workspace = true
+env_logger.workspace = true
+image.workspace = true
+qrcode.workspace = true
+jiff.workspace = true

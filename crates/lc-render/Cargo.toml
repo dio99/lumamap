@@ -1,0 +1,18 @@
+[package]
+name = "lc-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+lc-core.workspace = true
+lc-geom.workspace = true
+lc-media.workspace = true
+egui-wgpu.workspace = true
+log.workspace = true
+egui.workspace = true
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+pollster = "1"

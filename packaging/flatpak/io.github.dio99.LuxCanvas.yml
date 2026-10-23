@@ -1,0 +1,51 @@
+# Flatpak för LuxCanvas.
+#
+#   python3 packaging/flatpak/cargo-sources.py      # efter ändrad Cargo.lock
+#   flatpak run org.flatpak.Builder --user --install --force-clean \
+#       target/flatpak packaging/flatpak/io.github.dio99.LuxCanvas.yml
+#   flatpak run io.github.dio99.LuxCanvas
+id: io.github.dio99.LuxCanvas
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: luxcanvas
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU, webbkameror (V4L2) och MIDI-enheter.
+  - --device=all
+  # OSC och nätverksströmmar.
+  - --share=network
+  - --socket=pulseaudio
+  # Projekt pekar på media bredvid sig; filväljarens portal ger bara åtkomst
+  # till den valda filen, så media på hemkatalogen och USB-minnen behövs.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/luxcanvas/cargo
+    CARGO_NET_OFFLINE: 'true'
+modules:
+  - name: luxcanvas
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked
+      - install -Dm755 target/release/luxcanvas /app/bin/luxcanvas
+      - install -Dm644 packaging/linux/io.github.dio99.LuxCanvas.desktop /app/share/applications/io.github.dio99.LuxCanvas.desktop
+      - install -Dm644 packaging/linux/io.github.dio99.LuxCanvas.svg /app/share/icons/hicolor/scalable/apps/io.github.dio99.LuxCanvas.svg
+      - install -Dm644 packaging/linux/io.github.dio99.LuxCanvas.metainfo.xml /app/share/metainfo/io.github.dio99.LuxCanvas.metainfo.xml
+      - install -Dm644 packaging/linux/io.github.dio99.LuxCanvas.mime.xml /app/share/mime/packages/io.github.dio99.LuxCanvas.xml
+      - mkdir -p /app/share/luxcanvas && cp -r examples /app/share/luxcanvas/
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - packaging/appimage/tools
+          - .git
+      - cargo-sources.json

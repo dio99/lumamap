@@ -1,4 +1,4 @@
-# LumaMap – projection mapping software for Linux
+# LuxCanvas – projection mapping software for Linux
 
 **Free and open-source projection mapping (video mapping) for Linux.** Put
 video on any surface – a wall, a pillar, a ball, a whole house – by dragging
@@ -85,12 +85,12 @@ with edge blending).
 
 ## How it compares
 
-| | LumaMap | MadMapper | HeavyM | Resolume Arena |
+| | LuxCanvas | MadMapper | HeavyM | Resolume Arena |
 |---|---|---|---|---|
 | Runs on Linux | ✅ | – (Windows, macOS) | – (Windows, macOS) | – (Windows, macOS) |
 | Free and open source | ✅ AGPL-3.0 | – (paid) | – (freemium) | – (paid) |
 
-Everything LumaMap does is listed under [Features](#features): surfaces from
+Everything LuxCanvas does is listed under [Features](#features): surfaces from
 quads to balls and cones, several projectors with edge blending, cues with a
 timeline and schedule, phone remote, OSC, MIDI, DMX lights and LED pixel
 mapping over Art-Net, audio- and motion-reactive effects.
@@ -104,7 +104,7 @@ Linux distributions:
 
 ```bash
 packaging/appimage/build.sh
-./target/appimage/LumaMap-x86_64.AppImage
+./target/appimage/LuxCanvas-x86_64.AppImage
 ```
 
 ### Flatpak
@@ -113,8 +113,8 @@ packaging/appimage/build.sh
 flatpak install --user flathub org.flatpak.Builder org.freedesktop.Sdk//25.08 \
     org.freedesktop.Sdk.Extension.rust-stable//25.08
 flatpak run org.flatpak.Builder --user --install --force-clean \
-    target/flatpak packaging/flatpak/io.github.dio99.LumaMap.yml
-flatpak run io.github.dio99.LumaMap
+    target/flatpak packaging/flatpak/io.github.dio99.LuxCanvas.yml
+flatpak run io.github.dio99.LuxCanvas
 ```
 
 After changing dependencies, regenerate the offline crate list with
@@ -136,16 +136,16 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
 **3. Build and run:**
 
 ```bash
-git clone https://github.com/dio99/lumamap.git
-cd lumamap
+git clone https://github.com/dio99/luxcanvas.git
+cd luxcanvas
 cargo run --release
 ```
 
-The binary ends up in `target/release/lumamap`.
+The binary ends up in `target/release/luxcanvas`.
 
 ## Getting started
 
-LumaMap opens with a welcome screen: add a video, open a project, or click
+LuxCanvas opens with a welcome screen: add a video, open a project, or click
 one of the examples to see how a finished show is built.
 
 ![Welcome screen with the example projects](docs/welcome.jpg)
@@ -209,7 +209,7 @@ project and every media file it uses into one folder.
 **Starting a show automatically**, e.g. at boot in an installation:
 
 ```bash
-lumamap --play show.lmap
+luxcanvas --play show.lmap
 ```
 
 ## Examples
@@ -356,27 +356,27 @@ and a 📱 in the status bar shows that it is running.
   16:00–23:00 (times past midnight work too). Outside those times the
   projectors are black and the videos paused; when it is time again the
   first cue starts.
-- Start the computer with `lumamap --play show.lmap` (e.g. from autostart),
+- Start the computer with `luxcanvas --play show.lmap` (e.g. from autostart),
   and an installation runs on its own for weeks.
 
 ## OSC remote control
 
-LumaMap listens on UDP port **12345** (change it under ☰ → OSC remote
+LuxCanvas listens on UDP port **12345** (change it under ☰ → OSC remote
 control). Surfaces, sources and cues are addressed by name, with spaces
 written as `_`, or by number.
 
 ```text
-/lumamap/cue/<number or name>/go
-/lumamap/cue/next
-/lumamap/cue/prev
-/lumamap/surface/<name>/opacity    f   (0..1)
-/lumamap/surface/<name>/visible    i
-/lumamap/source/<name>/play
-/lumamap/source/<name>/pause
-/lumamap/source/<name>/seek        f   (seconds)
-/lumamap/source/<name>/speed       f   (0.1..4, 1 = normal)
-/lumamap/master/opacity            f   (0 = black)
-/lumamap/blackout                  i
+/luxcanvas/cue/<number or name>/go
+/luxcanvas/cue/next
+/luxcanvas/cue/prev
+/luxcanvas/surface/<name>/opacity    f   (0..1)
+/luxcanvas/surface/<name>/visible    i
+/luxcanvas/source/<name>/play
+/luxcanvas/source/<name>/pause
+/luxcanvas/source/<name>/seek        f   (seconds)
+/luxcanvas/source/<name>/speed       f   (0.1..4, 1 = normal)
+/luxcanvas/master/opacity            f   (0 = black)
+/luxcanvas/blackout                  i
 ```
 
 Buttons that send 1 on press and 0 on release (as TouchOSC does) trigger
@@ -392,12 +392,12 @@ next/previous cue, black out, show/hide a surface or play/pause a video.
 Mappings are saved in the project.
 
 MIDI is read straight from the kernel's raw MIDI devices (`/dev/snd/midi*`),
-so no extra libraries are needed and controllers plugged in while LumaMap
+so no extra libraries are needed and controllers plugged in while LuxCanvas
 runs are picked up automatically.
 
 ## Lights (DMX)
 
-LumaMap can drive stage lights over Art-Net. Open ☰ → **Lights (DMX)…**,
+LuxCanvas can drive stage lights over Art-Net. Open ☰ → **Lights (DMX)…**,
 tick **Send Art-Net**, add lamps (dimmer, RGB, RGBW or dimmer + RGB) and set
 the DMX channel each one starts at. Every cue stores the lamps' level and
 colour and fades them with the projection; master and black-out apply too.
@@ -418,32 +418,32 @@ open.
 
 The interface follows the system language (`LANG`): Swedish if it starts
 with `sv`, otherwise English. Change it under ☰ → Language / Språk; the
-choice is remembered in `~/.config/lumamap/language`.
+choice is remembered in `~/.config/luxcanvas/language`.
 
 ## Troubleshooting
 
 Check a camera, stream, video file or sound input without the editor:
 
 ```bash
-cargo run -p lm-media --example probe -- cameras
-cargo run -p lm-media --example probe -- camera /dev/video0
-cargo run -p lm-media --example probe -- stream rtsp://camera.local/stream
-cargo run -p lm-media --example probe -- audio computer
+cargo run -p lc-media --example probe -- cameras
+cargo run -p lc-media --example probe -- camera /dev/video0
+cargo run -p lc-media --example probe -- stream rtsp://camera.local/stream
+cargo run -p lc-media --example probe -- audio computer
 ```
 
 It prints when the first frame arrives and the frame rate (or the sound
-levels). More detail: `RUST_LOG=info lumamap`.
+levels). More detail: `RUST_LOG=info luxcanvas`.
 
 Video is uploaded as YUV straight from the decoder and converted to RGB on
 the GPU. If colours ever look wrong with a particular video, compare with
-the slower CPU conversion: `LUMAMAP_VIDEO_FORMAT=rgba lumamap`.
+the slower CPU conversion: `LUXCANVAS_VIDEO_FORMAT=rgba luxcanvas`.
 
 ## Development
 
 ```bash
 cargo test           # model, geometry, cues, MIDI, OSC, Art-Net, audio analysis, shaders
 cargo clippy --workspace --all-targets
-cargo run --release -p lm-render --example soak -- examples/showcase.lmap 1800
+cargo run --release -p lc-render --example soak -- examples/showcase.lmap 1800
                      # 30 minutes of playback without a window, printing memory use
 ```
 
@@ -451,12 +451,12 @@ The code is a Cargo workspace:
 
 | Crate | Purpose |
 |---|---|
-| `lm-core` | Project model, commands and undo, cues and fades, MIDI mapping, DMX values, collecting a project. No GPU, no video. |
-| `lm-geom` | Homographies, mesh splines, hit testing, camera calibration. |
-| `lm-media` | GStreamer sources (file, camera, stream), images, sound analysis. |
-| `lm-render` | wgpu rendering and shaders: surfaces, effects, patterns, YUV conversion, edge blending. |
-| `lm-control` | OSC server, raw MIDI input, Art-Net output, the web server for the phone remote. |
-| `lm-app` | The application: windows, egui editor, show control. |
+| `lc-core` | Project model, commands and undo, cues and fades, MIDI mapping, DMX values, collecting a project. No GPU, no video. |
+| `lc-geom` | Homographies, mesh splines, hit testing, camera calibration. |
+| `lc-media` | GStreamer sources (file, camera, stream), images, sound analysis. |
+| `lc-render` | wgpu rendering and shaders: surfaces, effects, patterns, YUV conversion, edge blending. |
+| `lc-control` | OSC server, raw MIDI input, Art-Net output, the web server for the phone remote. |
+| `lc-app` | The application: windows, egui editor, show control. |
 
 [ARCHITECTURE.md](ARCHITECTURE.md) (in Swedish) describes the design and the
 roadmap.
@@ -464,8 +464,8 @@ roadmap.
 ## Contributing
 
 Bug reports, ideas and pull requests are very welcome – see
-[CONTRIBUTING.md](CONTRIBUTING.md). Photos and videos of LumaMap on real
-walls are the best kind of bug report. If LumaMap is useful to you, a ⭐ on
+[CONTRIBUTING.md](CONTRIBUTING.md). Photos and videos of LuxCanvas on real
+walls are the best kind of bug report. If LuxCanvas is useful to you, a ⭐ on
 GitHub helps other people find it.
 
 ## License
@@ -476,7 +476,7 @@ GitHub helps other people find it.
 
 ## På svenska
 
-LumaMap är videomappning för Linux: lägg video på väggar, pelare och hela hus
+LuxCanvas är videomappning för Linux: lägg video på väggar, pelare och hela hus
 genom att dra hörnen tills de passar. Det klarar flera projektorer med
 keystone och kantblandning, masker, inriktning med webbkamera, effekter som
 följer musiken, cues med övergångar och styrning via OSC, MIDI och DMX-ljus.

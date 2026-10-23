@@ -1573,6 +1573,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "lc-control"
+version = "1.6.1"
+dependencies = [
+ "lc-core",
+ "log",
+ "rosc",
+]
+
+[[package]]
+name = "lc-core"
+version = "1.6.1"
+dependencies = [
+ "ron",
+ "serde",
+]
+
+[[package]]
+name = "lc-geom"
+version = "1.6.1"
+
+[[package]]
+name = "lc-media"
+version = "1.6.1"
+dependencies = [
+ "gstreamer",
+ "gstreamer-app",
+ "gstreamer-video",
+ "image",
+ "lc-core",
+ "log",
+]
+
+[[package]]
+name = "lc-render"
+version = "1.6.1"
+dependencies = [
+ "egui",
+ "egui-wgpu",
+ "lc-core",
+ "lc-geom",
+ "lc-media",
+ "log",
+ "naga",
+ "pollster 1.0.1",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1631,53 +1678,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
-name = "lm-control"
-version = "1.6.0"
-dependencies = [
- "lm-core",
- "log",
- "rosc",
-]
-
-[[package]]
-name = "lm-core"
-version = "1.6.0"
-dependencies = [
- "ron",
- "serde",
-]
-
-[[package]]
-name = "lm-geom"
-version = "1.6.0"
-
-[[package]]
-name = "lm-media"
-version = "1.6.0"
-dependencies = [
- "gstreamer",
- "gstreamer-app",
- "gstreamer-video",
- "image",
- "lm-core",
- "log",
-]
-
-[[package]]
-name = "lm-render"
-version = "1.6.0"
-dependencies = [
- "egui",
- "egui-wgpu",
- "lm-core",
- "lm-geom",
- "lm-media",
- "log",
- "naga",
- "pollster 1.0.1",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1693,18 +1693,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "lumamap"
-version = "1.6.0"
+name = "luxcanvas"
+version = "1.6.1"
 dependencies = [
  "eframe",
  "env_logger",
  "image",
  "jiff",
- "lm-control",
- "lm-core",
- "lm-geom",
- "lm-media",
- "lm-render",
+ "lc-control",
+ "lc-core",
+ "lc-geom",
+ "lc-media",
+ "lc-render",
  "log",
  "qrcode",
  "rfd",

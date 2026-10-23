@@ -3,20 +3,20 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.6.0"
+version = "1.6.1"
 edition = "2021"
 rust-version = "1.95"
 license = "AGPL-3.0-or-later"
 authors = ["Anders Larsson"]
-repository = "https://github.com/dio99/lumamap"
-homepage = "https://github.com/dio99/lumamap"
+repository = "https://github.com/dio99/luxcanvas"
+homepage = "https://github.com/dio99/luxcanvas"
 
 [workspace.dependencies]
-lm-core = { path = "crates/lm-core" }
-lm-geom = { path = "crates/lm-geom" }
-lm-media = { path = "crates/lm-media" }
-lm-render = { path = "crates/lm-render" }
-lm-control = { path = "crates/lm-control" }
+lc-core = { path = "crates/lc-core" }
+lc-geom = { path = "crates/lc-geom" }
+lc-media = { path = "crates/lc-media" }
+lc-render = { path = "crates/lc-render" }
+lc-control = { path = "crates/lc-control" }
 rosc = "0.11"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"

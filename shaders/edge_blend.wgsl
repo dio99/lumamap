@@ -4,7 +4,7 @@
 // Rampen är smoothstep i linjärt ljus, s(t) + s(1 − t) = 1, så två
 // projektorer som överlappar summerar till jämn ljusstyrka. Bilden är kodad
 // med projektorns gamma, så faktorn kodas likadant: pow(s, 1/gamma).
-// Samma beräkning finns i `EdgeBlend::linear_factor` (lm-core) och testas där.
+// Samma beräkning finns i `EdgeBlend::linear_factor` (lc-core) och testas där.
 
 struct EdgeUniform {
     // Bredd som andel av bilden: x = vänster, y = höger, z = topp, w = botten.

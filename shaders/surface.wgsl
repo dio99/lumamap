@@ -88,7 +88,7 @@ fn mask_alpha(pos: vec2<f32>) -> f32 {
     return clamp(-d / f + 0.5 / f, 0.0, 1.0);
 }
 
-// Samma beräkning som `ColorAdjust::apply` i lm-core (testas där).
+// Samma beräkning som `ColorAdjust::apply` i lc-core (testas där).
 fn adjust(c: vec3<f32>) -> vec3<f32> {
     var rgb = pow(max((c - 0.5) * u.color.y + 0.5 + u.color.x, vec3<f32>(0.0)), vec3<f32>(1.0 / u.color.z));
     let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));

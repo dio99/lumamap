@@ -1,6 +1,6 @@
 ---
 name: Feature idea
-about: Suggest something LumaMap should do
+about: Suggest something LuxCanvas should do
 labels: enhancement
 ---
 
