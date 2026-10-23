@@ -95,6 +95,7 @@ struct GpuTexture {
 }
 
 struct GpuOutput {
+    resolve: wgpu::Texture,
     resolve_view: wgpu::TextureView,
     msaa_view: wgpu::TextureView,
     size: [u32; 2],
@@ -323,6 +324,38 @@ impl Renderer {
         }
         let state = self.leds.get_mut(&output).expect("skapad ovan");
         self.led.sample(device, queue, state, &out.resolve_view, points);
+    }
+
+    /// Läser utgångens bild till processorn (RGBA, rad för rad). Väntar på
+    /// grafikkortet – för inspelning och tester, inte varje bildruta i appen.
+    pub fn read_output(&self, device: &wgpu::Device, queue: &wgpu::Queue, output: OutputId) -> Option<(Vec<u8>, [u32; 2])> {
+        let out = self.outputs.get(&output)?;
+        let [w, h] = out.size;
+        let row = (w * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("read output"),
+            size: (row * h) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("read output") });
+        enc.copy_texture_to_buffer(
+            out.resolve.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buf,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(h) },
+            },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        queue.submit([enc.finish()]);
+        buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
+        let data = buf.slice(..).get_mapped_range().ok()?;
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h as usize {
+            rgba.extend_from_slice(&data[y * row as usize..y * row as usize + w as usize * 4]);
+        }
+        Some((rgba, [w, h]))
     }
 
     /// Senast lästa LED-färger för utgången, i samma ordning som punkterna.
@@ -895,12 +928,13 @@ fn make_output(
     let msaa = device.create_texture(&desc(MSAA, wgpu::TextureUsages::RENDER_ATTACHMENT));
     let resolve = device.create_texture(&desc(
         1,
-        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
     ));
     let resolve_view = resolve.create_view(&Default::default());
     let egui_id = register(device, egui, &resolve_view, reuse);
     GpuOutput {
         msaa_view: msaa.create_view(&Default::default()),
+        resolve,
         resolve_view,
         size,
         egui_id,
