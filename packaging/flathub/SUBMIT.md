@@ -1,8 +1,9 @@
 # Skicka in LuxCanvas till Flathub
 
-Filerna här (`io.github.dio99.LuxCanvas.yml` och `cargo-sources.json`) är det
-som ska in i Flathub. Manifestet bygger från en tagg på GitHub, inte från den
-lokala mappen.
+Två av filerna här ska in i Flathub: `io.github.dio99.LuxCanvas.yml`
+(manifestet) och `cargo-sources.json` (Rust-paketen för bygget utan nät).
+Den här filen, `SUBMIT.md`, ska **inte** med – den är bara instruktioner.
+Manifestet bygger från en tagg på GitHub, inte från den lokala mappen.
 
 ## Första gången
 
